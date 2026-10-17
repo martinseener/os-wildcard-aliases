@@ -25,5 +25,7 @@ jobs:
         with:
           release: "14.3"
           usesh: true
-          prepare: pkg install -y python3 py311-dnspython
+          prepare: |
+            pkg install -y python3
+            pkg install -y "py$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')-dnspython"
           run: sh tests/freebsd/smoke.sh

@@ -259,7 +259,8 @@ class WildcardAliasesServer:
         """ actual bound (host, port) tuples, useful when listening on port 0 """
         result = []
         for server in self._servers:
-            if isinstance(server, asyncio.DatagramTransport):
+            # not isinstance(DatagramTransport): before Python 3.12 the UDP transport isn't one
+            if not isinstance(server, asyncio.AbstractServer):
                 result.append(server.get_extra_info('sockname')[:2])
         return result
 
