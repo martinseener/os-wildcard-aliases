@@ -63,7 +63,7 @@ if [ ${UNINSTALL} -eq 1 ]; then
 			done
 			rm -rf /var/db/wildcardaliases
 		fi
-		rm -f ${FILES} /etc/rc.conf.d/wildcardaliases \${PID}
+		rm -f ${FILES} /etc/rc.conf.d/wildcardaliases \${PID} /var/run/wildcardaliases.child.pid
 		rm -rf /usr/local/opnsense/scripts/OPNsense/WildcardAliases /usr/local/etc/wildcardaliases /var/run/wildcardaliases
 		${CLEAR_CACHES}
 		service configd restart

@@ -1,14 +1,18 @@
 import asyncio
 import json
+import socket
 import struct
 
 import dns.flags
 import dns.message
 import dns.rcode
+import dns.rdatatype
+import dns.rrset
 import pytest
 
 from wildcardaliases.backend import BackendError, MemoryBackend
 from wildcardaliases.config import parse
+from wildcardaliases import server as server_module
 from wildcardaliases.server import WildcardAliasesServer
 
 RECORDS = {
@@ -253,3 +257,97 @@ async def test_status_file(env, tmp_path):
     assert status['tables']['azure']['entries'] == 2
     assert status['tables']['azure']['patterns'] == ['*.core.windows.net']
     assert status['stats']['queries'] == 1
+
+
+# -- hardening (0.3) ----------------------------------------------------------------------
+
+
+async def test_upstream_gets_own_random_id_client_gets_its_own_back(env):
+    upstream, _, port = await env()
+    query = dns.message.make_query('www.example.org', 'A')
+    query.id = 4242
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    class Proto(asyncio.DatagramProtocol):
+        def connection_made(self, transport):
+            transport.sendto(query.to_wire())
+
+        def datagram_received(self, data, addr):
+            future.set_result(data)
+
+    transport, _ = await loop.create_datagram_endpoint(Proto, remote_addr=('127.0.0.1', port))
+    try:
+        reply = dns.message.from_wire(await asyncio.wait_for(future, 3))
+    finally:
+        transport.close()
+    assert reply.id == 4242
+    assert upstream.ids[-1] != 4242
+
+
+def _forge(query_wire, name, address, same_id=True):
+    """ a reply an attacker would race in: same or wrong id, possibly for another question """
+    query = dns.message.from_wire(query_wire)
+    forged = dns.message.make_response(dns.message.make_query(name, 'A'))
+    forged.id = query.id if same_id else (query.id + 1) % 65536
+    forged.answer.append(dns.rrset.from_text(name, 60, 'IN', 'A', address))
+    return forged.to_wire()
+
+
+async def test_forged_udp_replies_are_ignored(env):
+    upstream, server, port = await env()
+    # first a reply with a wrong id, then one with the right id for a different question,
+    # then the genuine reply: only the last one may be accepted
+    upstream.tamper = lambda query, reply: [
+        _forge(query, 'acct.blob.core.windows.net.', '198.51.100.66', same_id=False),
+        _forge(query, 'other.blob.core.windows.net.', '198.51.100.77'),
+        reply,
+    ]
+    resp = await udp_query(port, 'acct.blob.core.windows.net')
+    addresses = {rdata.address for rrset in resp.answer if rrset.rdtype == dns.rdatatype.A for rdata in rrset}
+    assert addresses == {'20.60.0.1'}
+    assert server.backend.tables['azure4'] == {'20.60.0.1'}
+
+
+async def test_only_forged_replies_lead_to_servfail(env):
+    upstream, server, port = await env()
+    upstream.tamper = lambda query, reply: [_forge(query, 'other.blob.core.windows.net.', '198.51.100.77')]
+    resp = await udp_query(port, 'acct.blob.core.windows.net')
+    assert resp.rcode() == dns.rcode.SERVFAIL
+    assert server.backend.tables.get('azure4', set()) == set()
+
+
+async def test_unexpected_error_answers_servfail(env, monkeypatch):
+    _, server, port = await env()
+
+    def broken(response, qname):
+        raise RuntimeError('bug')
+    monkeypatch.setattr(server_module, 'extract', broken)
+    resp = await udp_query(port, 'acct.blob.core.windows.net')
+    assert resp.rcode() == dns.rcode.SERVFAIL
+    # and the daemon keeps working for other names
+    assert (await udp_query(port, 'www.example.org')).rcode() == dns.rcode.NOERROR
+
+
+async def test_state_is_written_soon_after_learning(env, monkeypatch, tmp_path):
+    monkeypatch.setattr(server_module, 'STATE_DELAY', 0.05)
+    _, server, port = await env()
+    await udp_query(port, 'acct.blob.core.windows.net')
+    await asyncio.sleep(0.2)
+    state = json.loads((tmp_path / 'state.json').read_text())
+    assert set(state['azure4']) == {'20.60.0.1'}
+    # learned addresses are not world readable
+    assert (tmp_path / 'state.json').stat().st_mode & 0o777 == 0o600
+
+
+async def test_listen_failure_on_reload_is_retried(env, tmp_path):
+    upstream, server, port = await env(cleanup_interval=1)
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    blocker.bind(('127.0.0.1', 0))
+    busy = blocker.getsockname()[1]
+    await server.reload(make_config(upstream.port, tmp_path, listen=['127.0.0.1:%d' % busy], cleanup_interval=1))
+    assert not server._listeners_ok and server.listen_ports() == []
+    blocker.close()
+    await asyncio.sleep(1.5)
+    assert server._listeners_ok
+    assert (await udp_query(busy, 'www.example.org')).rcode() == dns.rcode.NOERROR

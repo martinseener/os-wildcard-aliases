@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: pip install dnspython pytest pytest-asyncio jinja2 flake8
+      - run: flake8 --max-line-length=120 net tests
+      - run: python -m pytest -q
+
+  freebsd-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: rc.d, daemon(8) supervision and pf on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.3"
+          usesh: true
+          prepare: pkg install -y python3 py311-dnspython
+          run: sh tests/freebsd/smoke.sh

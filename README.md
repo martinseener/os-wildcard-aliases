@@ -34,6 +34,10 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
   pf tracks them by state, not by table.
 * **Restarts:** learned addresses are saved to `/var/db/wildcardaliases/state.json` and restored on start.
   pf tables are replaced on start, so leftovers from earlier runs and from disabled aliases disappear.
+* **Robustness:** the daemon runs under daemon(8) and is restarted within seconds if it crashes.
+  Learned addresses are saved about a second after they are learned, so a restart loses next to
+  nothing. Replies from upstream are only accepted with the daemon's own random query ID and the
+  same question, and no address stays longer than a week, whatever TTL is announced.
 * **Failure mode:** if a table cannot be updated, the answer becomes SERVFAIL by default ("closed").
   The client then can't resolve the name instead of resolving it and being blocked.
 

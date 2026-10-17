@@ -28,6 +28,9 @@ class FakeUpstream:
         self.rcodes = rcodes or {}
         self.truncate = truncate
         self.queries = []
+        self.ids = []
+        # optional hook (query wire, reply wire) -> list of datagrams to send instead of the reply
+        self.tamper = None
         self.udp = None
         self.tcp = None
         self.port = None
@@ -36,6 +39,7 @@ class FakeUpstream:
         query = dns.message.from_wire(wire)
         qname = query.question[0].name.to_text().lower()
         self.queries.append((qname, 'tcp' if tcp else 'udp'))
+        self.ids.append(query.id)
         response = dns.message.make_response(query)
         if qname in self.rcodes:
             response.set_rcode(self.rcodes[qname])
@@ -56,7 +60,9 @@ class FakeUpstream:
                 self.transport = transport
 
             def datagram_received(self, data, addr):
-                self.transport.sendto(upstream.answer(data, False), addr)
+                reply = upstream.answer(data, False)
+                for datagram in (upstream.tamper(data, reply) if upstream.tamper else [reply]):
+                    self.transport.sendto(datagram, addr)
 
         self.udp, _ = await loop.create_datagram_endpoint(Udp, local_addr=('127.0.0.1', 0))
         self.port = self.udp.get_extra_info('sockname')[1]

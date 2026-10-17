@@ -67,6 +67,12 @@ def test_hold_time_defaults_to_ttl():
     assert cfg.hold_time(60) == 60
 
 
+def test_hold_time_hard_ceiling():
+    # a hostile authoritative server announcing a huge TTL can't make an address stay forever
+    assert parse(base()).hold_time(2 ** 31 - 1) == 7 * 86400
+    assert parse(base(max_hold=3600)).hold_time(2 ** 31 - 1) == 3600
+
+
 def test_hold_time():
     cfg = parse(base(min_hold=300, grace=60, max_hold=3600))
     assert cfg.hold_time(10) == 300

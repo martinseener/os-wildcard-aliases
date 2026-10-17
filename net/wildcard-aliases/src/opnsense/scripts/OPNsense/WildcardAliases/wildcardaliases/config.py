@@ -38,6 +38,10 @@ class ConfigError(ValueError):
     pass
 
 
+# no address stays longer than a week, whatever TTL a (possibly hostile) authoritative server announces
+HARD_MAX_HOLD = 7 * 86400
+
+
 @dataclass(frozen=True)
 class AliasConfig:
     name: str
@@ -67,7 +71,7 @@ class Config:
     def hold_time(self, ttl):
         """ how long a learned address stays in its table """
         hold = max(ttl + self.grace, self.min_hold)
-        return hold if self.max_hold is None else min(hold, self.max_hold)
+        return min(hold, self.max_hold if self.max_hold is not None else HARD_MAX_HOLD, HARD_MAX_HOLD)
 
 
 def parse_address(value, default_port=53, allow_any_port=False):

@@ -10,24 +10,41 @@
 
 name=wildcardaliases
 rcvar=wildcardaliases_enable
-command=/usr/local/opnsense/scripts/OPNsense/WildcardAliases/wildcardaliasesd.py
-command_interpreter=/usr/local/bin/python3
-pidfile="/var/run/${name}.pid"
-required_files="/usr/local/etc/wildcardaliases/wildcardaliases.json"
-extra_commands="reload configtest"
-sig_reload="HUP"
-configtest_cmd="wildcardaliases_configtest"
-start_precmd="wildcardaliases_configtest"
 
 load_rc_config $name
 
 : ${wildcardaliases_enable:=NO}
 
-command_args="-p ${pidfile}"
+# daemon(8) supervises the Python process and restarts it after a crash (-r, 5 s delay):
+# the supervisor's pid is ${pidfile}, the daemon's own pid ${child_pidfile}
+script=/usr/local/opnsense/scripts/OPNsense/WildcardAliases/wildcardaliasesd.py
+interpreter=/usr/local/bin/python3
+pidfile="/var/run/${name}.pid"
+child_pidfile="/var/run/${name}.child.pid"
+command=/usr/sbin/daemon
+# -S: whatever the daemon prints (e.g. a traceback when it crashes) goes to syslog as well
+command_args="-r -R 5 -S -T ${name} -t ${name} -P ${pidfile} -p ${child_pidfile} ${interpreter} ${script} -f --syslog"
+required_files="/usr/local/etc/wildcardaliases/wildcardaliases.json"
+extra_commands="reload configtest"
+configtest_cmd="wildcardaliases_configtest"
+reload_cmd="wildcardaliases_reload"
+start_precmd="wildcardaliases_configtest"
+stop_postcmd="rm -f ${child_pidfile}"
 
 wildcardaliases_configtest()
 {
-    ${command_interpreter} ${command} -t
+    ${interpreter} ${script} -t
+}
+
+wildcardaliases_reload()
+{
+    # SIGHUP must reach the daemon itself, daemon(8) does not pass it on
+    if [ -f "${child_pidfile}" ]; then
+        kill -HUP "$(cat "${child_pidfile}")"
+    else
+        echo "${name} is not running"
+        return 1
+    fi
 }
 
 run_rc_command "$1"

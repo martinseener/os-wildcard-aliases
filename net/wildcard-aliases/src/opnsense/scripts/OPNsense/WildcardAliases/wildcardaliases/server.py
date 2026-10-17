@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import socket
 import struct
 import time
@@ -46,15 +47,29 @@ log = logging.getLogger('wildcardaliases')
 # limit the number of queries processed concurrently
 MAX_INFLIGHT = 512
 TCP_IDLE_TIMEOUT = 10
+# write learned addresses to disk this many seconds after learning, so a restart loses little
+STATE_DELAY = 1.0
 
 
 class UpstreamError(Exception):
     pass
 
 
+def _is_reply(data, query_id, question):
+    """ does data answer our query: same id, QR set and the same question (name case-insensitive) """
+    if len(data) < 12 or data[:2] != query_id:
+        return False
+    try:
+        reply = dns.message.from_wire(data, question_only=True)
+    except dns.exception.DNSException:
+        return False
+    return bool(reply.flags & dns.flags.QR) and reply.question == question
+
+
 class _UdpQuery(asyncio.DatagramProtocol):
-    def __init__(self, wire, future):
+    def __init__(self, wire, question, future):
         self.wire = wire
+        self.question = question
         self.future = future
         self.query_id = wire[:2]
 
@@ -62,8 +77,8 @@ class _UdpQuery(asyncio.DatagramProtocol):
         transport.sendto(self.wire)
 
     def datagram_received(self, data, addr):
-        # ignore stray packets, only accept a reply to our query id
-        if data[:2] == self.query_id and not self.future.done():
+        # ignore stray and forged packets, only accept the reply to exactly our query
+        if not self.future.done() and _is_reply(data, self.query_id, self.question):
             self.future.set_result(data)
 
     def error_received(self, exc):
@@ -78,36 +93,47 @@ class Upstream:
         self.servers = servers
         self.timeout = timeout
 
-    async def query(self, wire, tcp=False):
-        errors = []
+    async def query(self, wire, question, tcp=False):
+        """ forward wire (the client's query), returns the reply with the client's id restored
+
+            :param question: the parsed question section of wire, replies must match it
+        """
+        client_id, errors = wire[:2], []
         for server in self.servers:
+            # our own random id per attempt, the client's id is known to the client (and guessable)
+            wire = secrets.token_bytes(2) + wire[2:]
             try:
                 if tcp:
-                    return await self._tcp(wire, server)
-                return await self._udp(wire, server)
+                    reply = await self._tcp(wire, question, server)
+                else:
+                    reply = await self._udp(wire, question, server)
+                return client_id + reply[2:]
             except (OSError, asyncio.TimeoutError, UpstreamError) as exc:
                 errors.append('%s:%d %s' % (server[0], server[1], exc.__class__.__name__))
         raise UpstreamError(', '.join(errors))
 
-    async def _udp(self, wire, server):
+    async def _udp(self, wire, question, server):
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         transport, _ = await loop.create_datagram_endpoint(
-            lambda: _UdpQuery(wire, future), remote_addr=server
+            lambda: _UdpQuery(wire, question, future), remote_addr=server
         )
         try:
             return await asyncio.wait_for(future, self.timeout)
         finally:
             transport.close()
 
-    async def _tcp(self, wire, server):
+    async def _tcp(self, wire, question, server):
         async def exchange():
             reader, writer = await asyncio.open_connection(server[0], server[1])
             try:
                 writer.write(struct.pack('!H', len(wire)) + wire)
                 await writer.drain()
                 length = struct.unpack('!H', await reader.readexactly(2))[0]
-                return await reader.readexactly(length)
+                reply = await reader.readexactly(length)
+                if not _is_reply(reply, wire[:2], question):
+                    raise UpstreamError('reply does not match the query')
+                return reply
             finally:
                 writer.close()
         try:
@@ -152,6 +178,8 @@ class WildcardAliasesServer:
         self._inflight = asyncio.Semaphore(MAX_INFLIGHT)
         self._lock = asyncio.Lock()
         self._housekeeping = None
+        self._state_pending = None
+        self._listeners_ok = True
         self.apply_config(config)
 
     # -- configuration -------------------------------------------------------------------
@@ -176,8 +204,7 @@ class WildcardAliasesServer:
             for name, table in self.store.tables.items():
                 await self._safe(self.backend.replace(name, sorted(table.entries)))
         if listen_changed:
-            await self.stop_listeners()
-            await self.start_listeners()
+            await self.restart_listeners()
         log.info('configuration reloaded (%d aliases)', len(self.aliases))
 
     # -- lifecycle -----------------------------------------------------------------------
@@ -212,6 +239,22 @@ class WildcardAliasesServer:
             self._servers.append(tcp)
             log.info('listening on %s port %d (udp/tcp)', host, port)
 
+    async def restart_listeners(self):
+        """ rebind to the configured addresses; on failure keep retrying from housekeeping """
+        await self.stop_listeners()
+        try:
+            await self.start_listeners()
+            if not self._listeners_ok:
+                log.info('listeners restored')
+            self._listeners_ok = True
+        except OSError as exc:
+            # don't keep half of the addresses: either all or none, retried every cleanup interval
+            await self.stop_listeners()
+            if self._listeners_ok:
+                log.error('unable to listen on %s: %s, DNS is NOT served until this is fixed (retrying)',
+                          ', '.join('%s:%d' % item for item in self.config.listen), exc)
+            self._listeners_ok = False
+
     def listen_ports(self):
         """ actual bound (host, port) tuples, useful when listening on port 0 """
         result = []
@@ -237,6 +280,8 @@ class WildcardAliasesServer:
         await self.stop_listeners()
         for task in list(self._tasks):
             task.cancel()
+        if self._state_pending is not None:
+            self._state_pending.cancel()
         self.write_state()
         self.write_status()
 
@@ -276,37 +321,47 @@ class WildcardAliasesServer:
             self.stats['queries'] += 1
             try:
                 query = dns.message.from_wire(wire)
-            except dns.exception.DNSException:
+            except Exception:
+                # dnspython raises DNSException for most garbage, but not for everything
                 return None
             if query.flags & dns.flags.QR or len(query.question) != 1:
                 return None
-            qname = query.question[0].name
-            tables = self.matcher.match(qname)
-
             try:
-                response_wire = await self.upstream.query(wire, tcp=tcp)
-            except UpstreamError as exc:
-                self.stats['upstream_errors'] += 1
+                return await self._resolve(wire, query, tcp)
+            except Exception:
+                # a bug must not leave the client waiting for its timeout
+                log.exception('error handling %s', normalize(query.question[0].name))
                 self.stats['servfail_sent'] += 1
-                log.warning('upstream failure for %s: %s', normalize(qname), exc)
                 return self._servfail(query)
 
-            if not tables:
-                return response_wire
+    async def _resolve(self, wire, query, tcp):
+        qname = query.question[0].name
+        tables = self.matcher.match(qname)
 
-            self.stats['matched'] += 1
-            try:
-                response = dns.message.from_wire(response_wire)
-            except dns.exception.DNSException:
-                log.warning('unparsable upstream response for %s', normalize(qname))
-                return self._servfail(query) if self.config.fail_closed else response_wire
+        try:
+            response_wire = await self.upstream.query(wire, query.question, tcp=tcp)
+        except UpstreamError as exc:
+            self.stats['upstream_errors'] += 1
+            self.stats['servfail_sent'] += 1
+            log.warning('upstream failure for %s: %s', normalize(qname), exc)
+            return self._servfail(query)
 
-            learned = extract(response, qname)
-            if learned and not await self.learn(tables, learned, normalize(qname)):
-                if self.config.fail_closed:
-                    self.stats['servfail_sent'] += 1
-                    return self._servfail(query)
+        if not tables:
             return response_wire
+
+        self.stats['matched'] += 1
+        try:
+            response = dns.message.from_wire(response_wire)
+        except dns.exception.DNSException:
+            log.warning('unparsable upstream response for %s', normalize(qname))
+            return self._servfail(query) if self.config.fail_closed else response_wire
+
+        learned = extract(response, qname)
+        if learned and not await self.learn(tables, learned, normalize(qname)):
+            if self.config.fail_closed:
+                self.stats['servfail_sent'] += 1
+                return self._servfail(query)
+        return response_wire
 
     async def learn(self, tables, learned, qname=''):
         """ add learned addresses to the matching tables, returns False when pf could not be updated """
@@ -335,6 +390,7 @@ class WildcardAliasesServer:
                 if new:
                     await self.backend.add(name, new)
                     self.stats['learned'] += len(new)
+                    self.schedule_state()
                     log.debug('%s: learned %s from %s', name, ', '.join(new), qname)
                 if evicted:
                     await self.backend.delete(name, evicted)
@@ -370,11 +426,21 @@ class WildcardAliasesServer:
                     for address in expired:
                         table.entries[address] = now
 
+    def schedule_state(self):
+        """ write the state soon, batching the writes of a burst of learned addresses """
+        if self._state_pending is None:
+            def flush():
+                self._state_pending = None
+                self.write_state()
+            self._state_pending = asyncio.get_running_loop().call_later(STATE_DELAY, flush)
+
     async def _housekeeping_loop(self):
         last_state = self.clock()
         while True:
             await asyncio.sleep(self.config.cleanup_interval)
             try:
+                if not self._listeners_ok:
+                    await self.restart_listeners()
                 async with self._lock:
                     await self.expire()
                 self.write_status()
@@ -397,12 +463,15 @@ class WildcardAliasesServer:
         }
 
     @staticmethod
-    def _write_json(path, data):
+    def _write_json(path, data, mode=0o644):
         directory = os.path.dirname(path)
         if directory:
-            os.makedirs(directory, exist_ok=True)
+            os.makedirs(directory, mode=0o755, exist_ok=True)
         tmp = '%s.tmp' % path
-        with open(tmp, 'w') as fhandle:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        # the file may exist from an earlier version with wider permissions
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'w') as fhandle:
             json.dump(data, fhandle)
         os.replace(tmp, path)
 
@@ -414,6 +483,7 @@ class WildcardAliasesServer:
 
     def write_state(self):
         try:
-            self._write_json(self.config.state_file, self.store.to_state())
+            # the learned addresses are root's business only
+            self._write_json(self.config.state_file, self.store.to_state(), mode=0o600)
         except OSError as exc:
             log.warning('unable to write state: %s', exc)

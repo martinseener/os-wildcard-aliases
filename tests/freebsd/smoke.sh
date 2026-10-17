@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# Smoke test on a plain FreeBSD box (run as root, used by the GitHub workflow): install the daemon
+# with its rc.d script, then check start, DNS + pf, auto-restart after a crash, reload and stop.
+# Needs python3 with dnspython, and network access for the upstream lookup.
+
+set -e
+
+SRC="$(cd "$(dirname "$0")/../../net/wildcard-aliases/src" && pwd)"
+SCRIPTS=/usr/local/opnsense/scripts/OPNsense/WildcardAliases
+CHILD=/var/run/wildcardaliases.child.pid
+SUPERVISOR=/var/run/wildcardaliases.pid
+
+fail() { echo "FAIL: $*"; tail -30 /var/log/messages; exit 1; }
+query() { drill -Q -p 5354 @127.0.0.1 "$1" A; }
+
+kldstat -q -m pf || kldload pf
+
+mkdir -p "${SCRIPTS}" /usr/local/etc/wildcardaliases
+cp -R "${SRC}/opnsense/scripts/OPNsense/WildcardAliases/" "${SCRIPTS}/"
+install -m 755 "${SRC}/etc/rc.d/wildcardaliases" /usr/local/etc/rc.d/wildcardaliases
+
+UPSTREAM="$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf)"
+cat > /usr/local/etc/wildcardaliases/wildcardaliases.json <<EOF
+{"listen": ["127.0.0.1:5354"], "upstreams": ["${UPSTREAM}"], "verbose": true,
+ "aliases": [{"name": "smoke_test", "patterns": ["*.github.com"], "inet": true, "inet6": true}]}
+EOF
+
+sysrc -q wildcardaliases_enable=YES
+service wildcardaliases configtest
+service wildcardaliases start
+sleep 2
+service wildcardaliases status || fail "not running after start"
+
+echo ">>> query and pf table"
+[ -n "$(query api.github.com)" ] || fail "no answer for api.github.com"
+pfctl -t smoke_test -T show | grep -q . || fail "pf table smoke_test is empty"
+[ -n "$(query www.freebsd.org)" ] || fail "no answer for a name outside the patterns"
+
+echo ">>> crash: kill -9 the daemon, daemon(8) must start a new one"
+OLD="$(cat ${CHILD})"
+kill -9 "${OLD}"
+sleep 8
+NEW="$(cat ${CHILD})"
+[ "${NEW}" != "${OLD}" ] && kill -0 "${NEW}" || fail "daemon was not restarted (old ${OLD}, new ${NEW})"
+[ -n "$(query api.github.com)" ] || fail "no answer after the restart"
+pfctl -t smoke_test -T show | grep -q . || fail "pf table empty after the restart (state not restored)"
+
+echo ">>> reload: same process, new configuration"
+sed -i '' 's/"smoke_test"/"smoke_test2"/' /usr/local/etc/wildcardaliases/wildcardaliases.json
+service wildcardaliases reload
+sleep 2
+[ "$(cat ${CHILD})" = "${NEW}" ] || fail "reload restarted the daemon"
+query api.github.com > /dev/null
+pfctl -t smoke_test2 -T show | grep -q . || fail "reload did not apply the new alias"
+
+echo ">>> stop: nothing may be left running"
+service wildcardaliases stop
+sleep 1
+pgrep -f wildcardaliasesd.py && fail "daemon still running after stop"
+[ ! -f "${CHILD}" ] || fail "child pidfile left behind"
+[ "$(stat -f %Lp /var/db/wildcardaliases/state.json)" = "600" ] || fail "state.json is not mode 600"
+
+grep -q 'wildcardaliases.*started' /var/log/messages || fail "no start message in syslog"
+echo "OK"
