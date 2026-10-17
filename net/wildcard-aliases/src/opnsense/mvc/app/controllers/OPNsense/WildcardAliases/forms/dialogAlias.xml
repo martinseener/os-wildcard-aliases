@@ -22,7 +22,7 @@
         <type>select_multiple</type>
         <style>tokenize</style>
         <allownew>true</allownew>
-        <hint>e.g. *.blob.core.windows.net, login.microsoftonline.com</hint>
+        <hint>e.g. *.blob.core.windows.net</hint>
         <help>Names to watch: "example.com" matches only that name, "*.example.com" matches every name below example.com (but not example.com itself). Add both if you need both.</help>
     </field>
     <field>

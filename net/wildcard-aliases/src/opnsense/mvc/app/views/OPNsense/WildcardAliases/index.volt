@@ -41,6 +41,14 @@
             toggle: '/api/wildcardaliases/settings/toggle_alias/'
         });
 
+        // loading the dialog leaves its tokenizers in a "focused" state without real focus, which
+        // hides their placeholder hint until the field is clicked once; reset that state
+        $("#{{formGridAlias['edit_dialog_id']}}").on('shown.bs.modal', function () {
+            $(this).find('select.tokenize').each(function () {
+                $(this).tokenize2().trigger('tokenize:deselect');
+            });
+        });
+
         $("#reconfigureAct").SimpleActionButton({
             onPreAction: function() {
                 const dfObj = $.Deferred();
