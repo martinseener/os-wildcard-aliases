@@ -1,5 +1,6 @@
 <menu>
     <Firewall>
-        <WildcardAliases VisibleName="Wildcard Aliases" cssClass="fa fa-eye fa-fw" url="/ui/wildcardaliases" order="25"/>
+        <!-- no order: core sorts by "order_id", so the id "AliasesWildcard" lands right below "Aliases" -->
+        <AliasesWildcard VisibleName="Wildcard Aliases" cssClass="fa fa-list-alt fa-fw" url="/ui/wildcardaliases"/>
     </Firewall>
 </menu>
