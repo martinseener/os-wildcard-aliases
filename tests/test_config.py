@@ -57,6 +57,16 @@ def test_invalid_configs(change):
         parse(base(**change))
 
 
+def test_hold_time_defaults_to_ttl():
+    cfg = parse(base())
+    assert (cfg.min_hold, cfg.grace, cfg.max_hold) == (0, 0, None)
+    assert cfg.hold_time(10) == 10
+    assert cfg.hold_time(604800) == 604800
+    # what the template writes for empty fields
+    cfg = parse(base(min_hold=None, grace=None, max_hold=None))
+    assert cfg.hold_time(60) == 60
+
+
 def test_hold_time():
     cfg = parse(base(min_hold=300, grace=60, max_hold=3600))
     assert cfg.hold_time(10) == 300

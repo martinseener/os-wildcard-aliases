@@ -91,7 +91,9 @@ class WildcardAliases extends BaseModel
             }
         }
 
-        if ((int)(string)$this->general->max_hold < (int)(string)$this->general->min_hold) {
+        $min_hold = (string)$this->general->min_hold;
+        $max_hold = (string)$this->general->max_hold;
+        if ($min_hold !== '' && $max_hold !== '' && (int)$max_hold < (int)$min_hold) {
             $messages->appendMessage(new Message(
                 gettext('The maximum hold time must not be lower than the minimum hold time.'),
                 $this->general->max_hold->__reference

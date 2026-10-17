@@ -22,6 +22,7 @@
         <type>select_multiple</type>
         <style>tokenize</style>
         <allownew>true</allownew>
+        <hint>e.g. *.blob.core.windows.net, login.microsoftonline.com</hint>
         <help>Names to watch: "example.com" matches only that name, "*.example.com" matches every name below example.com (but not example.com itself). Add both if you need both.</help>
     </field>
     <field>
@@ -29,12 +30,14 @@
         <label>Address families</label>
         <type>select_multiple</type>
         <help>Which address types (A/AAAA records and HTTPS hints) to add to the table.</help>
+        <advanced>true</advanced>
     </field>
     <field>
         <id>alias.max_entries</id>
         <label>Maximum entries</label>
         <type>text</type>
         <help>Upper limit for the table size. When reached, the entries closest to expiry are removed first.</help>
+        <advanced>true</advanced>
         <grid_view>
             <visible>false</visible>
         </grid_view>

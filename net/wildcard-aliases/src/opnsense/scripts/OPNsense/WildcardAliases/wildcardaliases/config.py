@@ -27,6 +27,7 @@ import ipaddress
 import json
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 from .matcher import Matcher
 
@@ -52,9 +53,10 @@ class Config:
     upstreams: tuple
     aliases: tuple
     upstream_timeout: float = 3.0
-    min_hold: int = 300
-    grace: int = 60
-    max_hold: int = 86400
+    # all optional: by default an address stays exactly as long as the DNS TTL says
+    min_hold: int = 0
+    grace: int = 0
+    max_hold: Optional[int] = None
     fail_closed: bool = True
     verbose: bool = False
     cleanup_interval: int = 10
@@ -64,7 +66,8 @@ class Config:
 
     def hold_time(self, ttl):
         """ how long a learned address stays in its table """
-        return min(max(ttl + self.grace, self.min_hold), self.max_hold)
+        hold = max(ttl + self.grace, self.min_hold)
+        return hold if self.max_hold is None else min(hold, self.max_hold)
 
 
 def parse_address(value, default_port=53, allow_any_port=False):
@@ -102,8 +105,11 @@ def parse_address(value, default_port=53, allow_any_port=False):
 
 
 def _int(data, key, default, minimum=0):
+    value = data.get(key)
+    if value is None:
+        return default
     try:
-        value = int(data.get(key, default))
+        value = int(value)
     except (TypeError, ValueError):
         raise ConfigError('%s must be an integer' % key)
     if value < minimum:
@@ -171,9 +177,9 @@ def parse(data):
         upstreams=upstreams,
         aliases=tuple(aliases),
         upstream_timeout=timeout,
-        min_hold=_int(data, 'min_hold', 300),
-        grace=_int(data, 'grace', 60),
-        max_hold=_int(data, 'max_hold', 86400, minimum=1),
+        min_hold=_int(data, 'min_hold', 0),
+        grace=_int(data, 'grace', 0),
+        max_hold=_int(data, 'max_hold', None, minimum=1),
         fail_closed=fail_mode == 'closed',
         verbose=bool(data.get('verbose', False)),
         cleanup_interval=_int(data, 'cleanup_interval', 10, minimum=1),

@@ -82,6 +82,17 @@ def test_json_template_single_alias_and_empty_config():
     assert empty['aliases'] == [] and empty['upstreams'] == []
 
 
+def test_json_template_empty_hold_times_follow_ttl():
+    data = json.loads(json.dumps(CONFIG))
+    general = data['OPNsense']['WildcardAliases']['general']
+    general.update(min_hold='', grace='', max_hold='')
+    rendered = json.loads(render('wildcardaliases.json', data))
+    assert (rendered['min_hold'], rendered['grace'], rendered['max_hold']) == (None, None, None)
+    assert parse(rendered).hold_time(42) == 42
+    # set values are passed on
+    assert parse(json.loads(render('wildcardaliases.json', CONFIG))).hold_time(10) == 300
+
+
 def test_rc_conf_template():
     assert 'wildcardaliases_enable="YES"' in render('rc.conf.d', CONFIG)
     assert 'wildcardaliases_enable="NO"' in render('rc.conf.d', {'OPNsense': {}})

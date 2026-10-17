@@ -19,31 +19,39 @@
         <type>select_multiple</type>
         <style>tokenize</style>
         <allownew>true</allownew>
+        <hint>e.g. 127.0.0.1:5353</hint>
         <help>Servers that actually resolve the queries, tried in order. They must not forward the watched domains back to Wildcard Aliases (loop). With AdGuard Home in front of Unbound, use Unbound's address (for example 127.0.0.1:5353).</help>
     </field>
     <field>
         <id>wildcardaliases.general.min_hold</id>
         <label>Minimum hold time</label>
         <type>text</type>
-        <help>Learned addresses stay in their table for at least this many seconds, even if the DNS TTL is shorter.</help>
+        <hint>DNS TTL</hint>
+        <help>Learned addresses stay in their table for at least this many seconds, even if the DNS TTL is shorter. Leave empty to follow the TTL.</help>
+        <advanced>true</advanced>
     </field>
     <field>
         <id>wildcardaliases.general.grace</id>
         <label>Grace period</label>
         <type>text</type>
-        <help>Seconds added to the DNS TTL, covering clients and caches that keep using an answer slightly longer.</help>
+        <hint>0</hint>
+        <help>Seconds added to the DNS TTL, covering clients and caches that keep using an answer slightly longer. Leave empty to add nothing.</help>
+        <advanced>true</advanced>
     </field>
     <field>
         <id>wildcardaliases.general.max_hold</id>
         <label>Maximum hold time</label>
         <type>text</type>
-        <help>Upper bound in seconds, regardless of the TTL announced by the upstream.</help>
+        <hint>DNS TTL</hint>
+        <help>Upper bound in seconds, regardless of the TTL announced by the upstream. Leave empty for no limit.</help>
+        <advanced>true</advanced>
     </field>
     <field>
         <id>wildcardaliases.general.fail_mode</id>
         <label>Failure mode</label>
         <type>dropdown</type>
         <help>What to do with an answer for a watched domain when its table cannot be updated. "Closed" makes the lookup fail, which is the right choice when the table is used to allow traffic.</help>
+        <advanced>true</advanced>
     </field>
     <field>
         <id>wildcardaliases.general.verbose</id>

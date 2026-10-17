@@ -1,6 +1,6 @@
 <model>
     <mount>//OPNsense/WildcardAliases</mount>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <description>Wildcard Aliases: DNS-learned wildcard FQDN aliases</description>
     <items>
         <general>
@@ -14,21 +14,16 @@
             </listen>
             <!-- only required when enabled (see performValidation), so a fresh install validates -->
             <upstreams type="CSVListField"/>
+            <!-- hold times are optional: empty means "use the DNS TTL as is" -->
             <min_hold type="IntegerField">
-                <Default>300</Default>
-                <Required>Y</Required>
                 <MinimumValue>0</MinimumValue>
                 <MaximumValue>604800</MaximumValue>
             </min_hold>
             <grace type="IntegerField">
-                <Default>60</Default>
-                <Required>Y</Required>
                 <MinimumValue>0</MinimumValue>
                 <MaximumValue>86400</MaximumValue>
             </grace>
             <max_hold type="IntegerField">
-                <Default>86400</Default>
-                <Required>Y</Required>
                 <MinimumValue>60</MinimumValue>
                 <MaximumValue>604800</MaximumValue>
             </max_hold>

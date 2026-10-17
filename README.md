@@ -26,8 +26,10 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
   (not `example.com` itself).
 * **What is learned:** the A and AAAA records of the queried name and its CNAME chain, plus the
   `ipv4hint`/`ipv6hint` of HTTPS/SVCB records. Records not belonging to the chain are ignored.
-* **Expiry:** pf tables have no per-entry lifetime, so the daemon tracks one per address:
-  `max(longest TTL in the chain + grace, minimum hold)`, capped by the maximum hold time.
+* **Expiry:** pf tables have no per-entry lifetime, so the daemon tracks one per address. By
+  default an address stays exactly as long as the longest TTL in the answer's chain, like in any DNS
+  cache. In advanced mode you can change that with a minimum hold time, a grace period added to the
+  TTL, and a maximum hold time: `max(TTL + grace, minimum hold)`, capped by the maximum.
   Expired addresses are removed every few seconds. Established connections keep working, because
   pf tracks them by state, not by table.
 * **Restarts:** learned addresses are saved to `/var/db/wildcardaliases/state.json` and restored on start.
@@ -71,8 +73,10 @@ No extra packages are needed: dnspython is already a dependency of OPNsense core
 ## Configuration
 
 1. **Firewall → Wildcard Aliases → Settings**: enable it, keep listen address `127.0.0.1:5354`, and set
-   the upstream that really resolves the names (see below).
-2. **Aliases** tab: add a wildcard alias, e.g. name `azure_storage`, patterns `*.blob.core.windows.net`.
+   the upstream that really resolves the names (see below). The remaining settings are under
+   "advanced mode" and can stay at their defaults.
+2. **Aliases** tab: add a wildcard alias, e.g. name `azure_storage`, patterns `*.blob.core.windows.net`
+   (address families and table size are in advanced mode).
    Apply. The alias `azure_storage` appears under Firewall → Aliases.
 3. **Send DNS through the daemon.** There are two modes:
 
@@ -100,8 +104,8 @@ No extra packages are needed: dnspython is already a dependency of OPNsense core
      keeps DNS working if the daemon is down. Nothing is learned meanwhile, so rules using the
      aliases miss new addresses, which is the safe direction.
    * Turn off **optimistic caching**: it hands out expired answers without asking upstream, after
-     the daemon has already removed the addresses. If you override the minimum cache TTL, keep it
-     at or below the daemon's minimum hold (default 300 s).
+     the daemon has already removed the addresses. Don't override the minimum cache TTL either,
+     or set the daemon's minimum hold time (advanced mode) to at least the same value.
    * AdGuard keeps the real client addresses for its statistics and per-client settings, because it
      stays in front.
 

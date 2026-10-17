@@ -56,7 +56,9 @@ class WildcardAliasesModelTest extends TestCase
         $model = new WildcardAliases();
         $this->assertEquals('0', (string)$model->general->enabled);
         $this->assertEquals('127.0.0.1:5354', (string)$model->general->listen);
-        $this->assertEquals('300', (string)$model->general->min_hold);
+        $this->assertEquals('', (string)$model->general->min_hold, 'hold times follow the DNS TTL by default');
+        $this->assertEquals('', (string)$model->general->grace);
+        $this->assertEquals('', (string)$model->general->max_hold);
         $this->assertEquals('closed', (string)$model->general->fail_mode);
     }
 
@@ -81,7 +83,41 @@ class WildcardAliasesModelTest extends TestCase
         $this->assertTrue((new WildcardAliases())->runMigrations());
         Config::getInstance()->save();
         Config::getInstance()->forceReload();
-        $this->assertEquals('0.1.0', (new WildcardAliases())->getVersion());
+        $this->assertEquals('0.2.0', (new WildcardAliases())->getVersion());
+    }
+
+    public function testMigrationClearsOldDefaultHoldTimes()
+    {
+        // settings as saved by 0.1: old defaults for min_hold/max_hold, a user choice for grace
+        $root = Config::getInstance()->object();
+        $node = $root->addChild('OPNsense')->addChild('WildcardAliases');
+        $node->addAttribute('version', '0.1.0');
+        $general = $node->addChild('general');
+        foreach (['enabled' => '1', 'upstreams' => '127.0.0.1:5353', 'min_hold' => '300', 'grace' => '30',
+                  'max_hold' => '86400', 'fail_mode' => 'closed'] as $key => $value) {
+            $general->addChild($key, $value);
+        }
+        Config::getInstance()->save();
+        Config::getInstance()->forceReload();
+
+        $this->assertTrue((new WildcardAliases())->runMigrations());
+        Config::getInstance()->save();
+        Config::getInstance()->forceReload();
+        $model = new WildcardAliases();
+        $this->assertEquals('0.2.0', $model->getVersion());
+        $this->assertEquals('', (string)$model->general->min_hold);
+        $this->assertEquals('30', (string)$model->general->grace);
+        $this->assertEquals('', (string)$model->general->max_hold);
+    }
+
+    public function testOnlyOneHoldTimeSet()
+    {
+        $model = self::validModel();
+        $model->general->max_hold = '3600';
+        $this->assertEquals([], self::messages($model));
+        $model->general->max_hold = '';
+        $model->general->min_hold = '7200';
+        $this->assertEquals([], self::messages($model));
     }
 
     public function testInvalidAddresses()

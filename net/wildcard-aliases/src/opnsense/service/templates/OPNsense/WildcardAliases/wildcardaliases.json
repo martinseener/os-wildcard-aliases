@@ -16,9 +16,9 @@
 {{ {
     'listen': (general.listen|default('127.0.0.1:5354')).split(','),
     'upstreams': (general.upstreams|default('')).split(',') if general.upstreams|default('') else [],
-    'min_hold': general.min_hold|default('300')|int,
-    'grace': general.grace|default('60')|int,
-    'max_hold': general.max_hold|default('86400')|int,
+    'min_hold': general.min_hold|int if general.min_hold|default('') else none,
+    'grace': general.grace|int if general.grace|default('') else none,
+    'max_hold': general.max_hold|int if general.max_hold|default('') else none,
     'fail_mode': general.fail_mode|default('closed'),
     'verbose': general.verbose|default('0') == '1',
     'aliases': aliases
