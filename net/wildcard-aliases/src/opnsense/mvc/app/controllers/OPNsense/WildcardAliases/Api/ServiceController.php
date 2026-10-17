@@ -81,4 +81,24 @@ class ServiceController extends ApiMutableServiceControllerBase
         }
         return ['tables' => $rows, 'stats' => $response['stats'] ?? []];
     }
+
+    /**
+     * learned addresses of one wildcard alias (POST "alias"), with the domains they were learned from
+     */
+    public function entriesAction()
+    {
+        $alias = (string)$this->request->get('alias');
+        $response = json_decode((new Backend())->configdRun('wildcardaliases entries'), true);
+        $records = [];
+        if (is_array($response) && isset($response[$alias]) && is_array($response[$alias])) {
+            foreach ($response[$alias] as $entry) {
+                $records[] = [
+                    'address' => (string)($entry['address'] ?? ''),
+                    'domains' => implode(', ', array_map('strval', (array)($entry['names'] ?? []))),
+                    'expires_in' => (int)($entry['expires_in'] ?? 0),
+                ];
+            }
+        }
+        return $this->searchRecordsetBase($records, ['address', 'domains'], 'address');
+    }
 }

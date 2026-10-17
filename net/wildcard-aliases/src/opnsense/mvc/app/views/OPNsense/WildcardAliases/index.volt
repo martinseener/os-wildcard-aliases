@@ -91,7 +91,10 @@
                 rows.forEach(function(row) {
                     const last = row.last_learned ? new Date(row.last_learned * 1000).toLocaleString() : '-';
                     $body.append($('<tr>').append(
-                        $('<td>').text(row.name),
+                        $('<td>').append($('<a href="#">').text(row.name).on('click', function (e) {
+                            e.preventDefault();
+                            showEntriesOf(row.name);
+                        })),
                         $('<td>').text(row.patterns),
                         $('<td>').text(row.entries + ' / ' + row.max_entries),
                         $('<td>').text(row.learned_total + (row.evicted_total ? ' (' + row.evicted_total + " {{ lang._('evicted') }})" : '')),
@@ -110,6 +113,73 @@
         }
 
         $('a[data-toggle="tab"][href="#status"]').on('shown.bs.tab', loadStats);
+
+        // learned addresses of one alias, with the domains they came from
+        let entriesGrid = null;
+        let entriesWanted = null;
+
+        function formatDuration(seconds) {
+            const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600);
+            const m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
+            if (d > 0) return d + 'd ' + h + 'h';
+            if (h > 0) return h + 'h ' + m + 'm';
+            if (m > 0) return m + 'm ' + s + 's';
+            return s + 's';
+        }
+
+        function reloadEntries() {
+            if (entriesGrid === null) {
+                entriesGrid = $('#grid-entries').UIBootgrid({
+                    search: '/api/wildcardaliases/service/entries',
+                    datakey: 'address',
+                    options: {
+                        selection: false,
+                        multiSelect: false,
+                        requestHandler: function (request) {
+                            request['alias'] = $('#entries_alias').val() || '';
+                            return request;
+                        },
+                        formatters: {
+                            // domain names come from DNS queries: always render them as text
+                            text: function (column, row) {
+                                return $('<div>').text(row[column.id] || '').html();
+                            },
+                            duration: function (column, row) {
+                                return formatDuration(parseInt(row[column.id], 10) || 0);
+                            }
+                        }
+                    }
+                });
+                $('#entries_alias_wrapper').detach().insertBefore('#grid-entries-header .search');
+            } else {
+                $('#grid-entries').bootgrid('reload');
+            }
+        }
+
+        function loadEntries() {
+            ajaxGet('/api/wildcardaliases/service/stats', {}, function (data, status) {
+                const $select = $('#entries_alias');
+                const current = entriesWanted || $select.val();
+                entriesWanted = null;
+                $select.empty();
+                ((data && data.tables) || []).forEach(function (row) {
+                    $select.append($('<option>').val(row.name).text(row.name));
+                });
+                if (current) {
+                    $select.val(current);
+                }
+                $select.selectpicker('refresh');
+                reloadEntries();
+            });
+        }
+
+        function showEntriesOf(name) {
+            entriesWanted = name;
+            $('a[data-toggle="tab"][href="#entries"]').tab('show');
+        }
+
+        $('a[data-toggle="tab"][href="#entries"]').on('shown.bs.tab', loadEntries);
+        $('#entries_alias').on('changed.bs.select', reloadEntries);
         $('#refreshStats').click(loadStats);
     });
 </script>
@@ -118,6 +188,7 @@
     <li class="active"><a data-toggle="tab" href="#aliases">{{ lang._('Aliases') }}</a></li>
     <li><a data-toggle="tab" href="#general">{{ lang._('Settings') }}</a></li>
     <li><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
+    <li><a data-toggle="tab" href="#entries">{{ lang._('Learned addresses') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
@@ -143,8 +214,24 @@
                 <tbody></tbody>
             </table>
             <button class="btn btn-default" id="refreshStats" type="button">{{ lang._('Refresh') }}</button>
-            <p class="text-muted">{{ lang._('The addresses themselves can be inspected under Firewall: Diagnostics: Aliases.') }}</p>
+            <p class="text-muted">{{ lang._('Click an alias to see its learned addresses.') }}</p>
         </div>
+    </div>
+    <div id="entries" class="tab-pane fade in">
+        <div id="entries_alias_wrapper" class="btn-group">
+            <select id="entries_alias" class="selectpicker" data-live-search="true" data-width="250px"
+                    title="{{ lang._('Select a wildcard alias') }}"></select>
+        </div>
+        <table id="grid-entries" class="table table-condensed table-hover table-striped table-responsive">
+            <thead>
+                <tr>
+                    <th data-column-id="address" data-type="string" data-identifier="true" data-formatter="text">{{ lang._('Address') }}</th>
+                    <th data-column-id="domains" data-type="string" data-formatter="text">{{ lang._('Learned from (most recent domains)') }}</th>
+                    <th data-column-id="expires_in" data-type="numeric" data-formatter="duration">{{ lang._('Expires in') }}</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 </div>
 

@@ -436,7 +436,7 @@ class WildcardAliasesServer:
             if not addresses:
                 continue
             table = self.store.get(name)
-            new, evicted = table.learn(sorted(addresses), expires, now)
+            new, evicted = table.learn(sorted(addresses), expires, now, name=qname)
             try:
                 if new:
                     await self.backend.add(name, new)

@@ -1,6 +1,5 @@
 PLUGIN_NAME=		wildcard-aliases
-PLUGIN_VERSION=		1.0
-PLUGIN_REVISION=	1
+PLUGIN_VERSION=		1.1
 PLUGIN_COMMENT=		DNS-learned wildcard FQDN aliases
 PLUGIN_MAINTAINER=	martin@sysorchestra.com
 PLUGIN_WWW=		https://github.com/martinseener/os-wildcard-aliases

@@ -439,3 +439,9 @@ async def test_tcp_queries_per_connection_limit(env, monkeypatch):
     with pytest.raises(asyncio.IncompleteReadError):
         await _tcp_exchange(reader, writer, 'www.example.org')
     writer.close()
+
+
+async def test_learned_addresses_remember_the_queried_name(env):
+    _, server, port = await env()
+    await udp_query(port, 'ACCT.blob.core.windows.net')
+    assert server.store.get('azure4').names == {'20.60.0.1': ['acct.blob.core.windows.net']}

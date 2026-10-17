@@ -60,6 +60,10 @@ sleep 2
 query api.github.com > /dev/null
 pfctl -t smoke_test2 -T show | grep -q . || fail "reload did not apply the new alias"
 
+echo ">>> learned addresses with their domain (GUI listing)"
+sleep 2
+${SCRIPTS}/entries.py | grep -q '"api.github.com"' || fail "entries.py does not list api.github.com"
+
 echo ">>> package upgrade: a running daemon gets the new code"
 OLD="$(cat ${CHILD})"
 sh "${SRC}/../+POST_INSTALL.post"

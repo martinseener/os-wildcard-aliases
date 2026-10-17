@@ -38,6 +38,9 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
   Learned addresses are saved about a second after they are learned, so a restart loses next to
   nothing. Replies from upstream are only accepted with the daemon's own random query ID and the
   same question, and no address stays longer than a week, whatever TTL is announced.
+* **Learned addresses:** the "Learned addresses" tab lists each alias's addresses with the domains
+  they were learned from (the 5 most recent per address) and when they expire. Only plain host
+  names are recorded, and they are always displayed as text.
 * **Failure mode:** if a table cannot be updated, the answer becomes SERVFAIL by default ("closed").
   The client then can't resolve the name instead of resolving it and being blocked.
 

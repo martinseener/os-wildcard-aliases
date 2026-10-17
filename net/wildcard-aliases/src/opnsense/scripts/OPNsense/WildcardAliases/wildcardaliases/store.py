@@ -23,6 +23,22 @@
     ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
     POSSIBILITY OF SUCH DAMAGE.
 """
+import re
+
+# domains remembered per address: CDN addresses serve many names, keep the most recent ones
+MAX_NAMES = 5
+# only store plain host names: DNS labels may contain any byte (e.g. "<script>"), and these names
+# end up in the GUI
+SAFE_NAME = re.compile(r'^[a-z0-9_-]+(\.[a-z0-9_-]+)*$')
+
+
+def _remember(names, name):
+    if name and len(name) <= 253 and SAFE_NAME.match(name):
+        if name in names:
+            names.remove(name)
+        names.append(name)
+        del names[:-MAX_NAMES]
+    return names
 
 
 class TableState:
@@ -32,17 +48,21 @@ class TableState:
         self.name = name
         self.max_entries = max_entries
         self.entries = {}
+        # address -> the most recent domain names it was learned from
+        self.names = {}
         self.learned_total = 0
         self.evicted_total = 0
         self.last_learned = None
 
-    def learn(self, addresses, expires, now):
+    def learn(self, addresses, expires, now, name=None):
         """ register addresses, extending the expiry of known ones.
 
+            :param name: the domain name the addresses were learned from
             :return: tuple (new, evicted), the addresses that must be added to / removed from pf
         """
         new = []
         for address in addresses:
+            _remember(self.names.setdefault(address, []), name)
             current = self.entries.get(address)
             if current is None:
                 new.append(address)
@@ -62,6 +82,7 @@ class TableState:
                 )
                 for address, _ in candidates[:overflow]:
                     del self.entries[address]
+                    self.names.pop(address, None)
                     evicted.append(address)
                 self.evicted_total += len(evicted)
                 gone = set(evicted)
@@ -72,13 +93,22 @@ class TableState:
     def forget(self, addresses):
         for address in addresses:
             self.entries.pop(address, None)
+            self.names.pop(address, None)
 
     def expire(self, now):
         """ remove and return all addresses which expired before now """
         expired = [address for address, expires in self.entries.items() if expires <= now]
         for address in expired:
             del self.entries[address]
+            self.names.pop(address, None)
         return expired
+
+    def listing(self, now):
+        """ the learned addresses for display: address, seconds until expiry, domain names """
+        return [
+            {'address': address, 'expires_in': max(0, round(expires - now)), 'names': self.names.get(address, [])}
+            for address, expires in self.entries.items()
+        ]
 
     def status(self, now):
         next_expiry = min(self.entries.values()) if self.entries else None
@@ -118,7 +148,13 @@ class Store:
         return self.tables[name]
 
     def to_state(self):
-        return {name: dict(table.entries) for name, table in self.tables.items()}
+        return {
+            name: {
+                address: {'expires': expires, 'names': table.names.get(address, [])}
+                for address, expires in table.entries.items()
+            }
+            for name, table in self.tables.items()
+        }
 
     def load_state(self, state, now):
         """ restore entries saved by to_state(), skipping expired ones and unknown tables """
@@ -128,11 +164,21 @@ class Store:
             table = self.tables.get(name)
             if table is None or not isinstance(entries, dict):
                 continue
-            for address, expires in entries.items():
-                if isinstance(expires, (int, float)) and expires > now:
-                    table.entries[address] = expires
+            for address, value in entries.items():
+                # before 1.1 the state only held the expiry time
+                names = []
+                if isinstance(value, dict):
+                    names = value.get('names') if isinstance(value.get('names'), list) else []
+                    value = value.get('expires')
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and value > now:
+                    table.entries[address] = value
+                    table.names[address] = []
+                    for name in names[-MAX_NAMES:]:
+                        if isinstance(name, str):
+                            _remember(table.names[address], name)
             # respect a possibly lowered limit
             overflow = len(table.entries) - table.max_entries
             if overflow > 0:
                 for address, _ in sorted(table.entries.items(), key=lambda item: item[1])[:overflow]:
                     del table.entries[address]
+                    table.names.pop(address, None)
