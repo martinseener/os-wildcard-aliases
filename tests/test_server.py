@@ -13,7 +13,7 @@ import pytest
 from wildcardaliases.backend import BackendError, MemoryBackend
 from wildcardaliases.config import parse
 from wildcardaliases import server as server_module
-from wildcardaliases.server import WildcardAliasesServer
+from wildcardaliases.server import WildcardAliasesServer, is_public
 
 RECORDS = {
     'acct.blob.core.windows.net.': [
@@ -351,3 +351,91 @@ async def test_listen_failure_on_reload_is_retried(env, tmp_path):
     await asyncio.sleep(1.5)
     assert server._listeners_ok
     assert (await udp_query(busy, 'www.example.org')).rcode() == dns.rcode.NOERROR
+
+
+# -- private addresses and overload (0.4) -------------------------------------------------
+
+PRIVATE_RECORDS = dict(RECORDS, **{
+    'nas.blob.core.windows.net.': [
+        'nas.blob.core.windows.net. 60 IN A 192.168.1.10',
+        'nas.blob.core.windows.net. 60 IN A 20.60.0.9',
+        'nas.blob.core.windows.net. 60 IN AAAA ::ffff:10.0.0.1',
+    ],
+    'db.corp.core.windows.net.': ['db.corp.core.windows.net. 60 IN A 10.1.2.3'],
+})
+
+
+@pytest.mark.parametrize('address,public', [
+    ('8.8.8.8', True), ('2a01:4f8::1', True), ('20.60.0.1', True),
+    ('10.0.0.1', False), ('172.16.5.5', False), ('192.168.1.1', False), ('100.64.1.1', False),
+    ('127.0.0.1', False), ('169.254.1.1', False), ('0.0.0.0', False), ('224.0.0.251', False),
+    ('192.0.2.1', False), ('::1', False), ('fd00::1', False), ('fe80::1', False), ('ff02::1', False),
+    ('2001:db8::1', False), ('::ffff:192.168.1.1', False), ('::ffff:8.8.8.8', True),
+])
+def test_is_public(address, public):
+    assert is_public(address) is public
+
+
+async def test_private_addresses_are_ignored_by_default(env):
+    _, server, port = await env(records=PRIVATE_RECORDS)
+    await udp_query(port, 'nas.blob.core.windows.net')
+    assert server.backend.tables['azure4'] == {'20.60.0.9'}
+    assert server.stats['private_ignored'] == 2
+
+
+async def test_private_addresses_allowed(env):
+    _, server, port = await env(records=PRIVATE_RECORDS, private_addresses='allow')
+    await udp_query(port, 'nas.blob.core.windows.net')
+    assert server.backend.tables['azure4'] == {'20.60.0.9', '192.168.1.10'}
+
+
+async def test_private_addresses_only_for_listed_domains(env):
+    _, server, port = await env(records=PRIVATE_RECORDS, private_addresses='domains',
+                                private_domains=['*.corp.core.windows.net'])
+    await udp_query(port, 'db.corp.core.windows.net')
+    await udp_query(port, 'nas.blob.core.windows.net')
+    assert server.backend.tables['azure'] == {'10.1.2.3', '20.60.0.9'}
+
+
+async def test_overload_is_refused_not_queued(env, monkeypatch):
+    monkeypatch.setattr(server_module, 'MAX_INFLIGHT', 2)
+    upstream, server, port = await env()
+    upstream.tamper = lambda query, reply: []  # hanging upstream
+    results = await asyncio.gather(*[udp_query(port, 'www.example.org') for _ in range(6)])
+    rcodes = sorted(dns.rcode.to_text(resp.rcode()) for resp in results)
+    assert rcodes == ['REFUSED'] * 4 + ['SERVFAIL'] * 2
+    assert server.stats['refused_overload'] == 4
+
+
+async def _tcp_exchange(reader, writer, name):
+    wire = dns.message.make_query(name, 'A').to_wire()
+    writer.write(struct.pack('!H', len(wire)) + wire)
+    await writer.drain()
+    length = struct.unpack('!H', await reader.readexactly(2))[0]
+    return dns.message.from_wire(await reader.readexactly(length))
+
+
+async def test_tcp_client_limit(env, monkeypatch):
+    monkeypatch.setattr(server_module, 'MAX_TCP_CLIENTS', 1)
+    _, server, port = await env()
+    first = await asyncio.open_connection('127.0.0.1', port)
+    await _tcp_exchange(*first, 'www.example.org')
+    reader, writer = await asyncio.open_connection('127.0.0.1', port)
+    assert await asyncio.wait_for(reader.read(), 3) == b''  # closed at once
+    writer.close()
+    # the first connection is not affected, and a slot frees up once it is gone
+    assert (await _tcp_exchange(*first, 'www.example.org')).rcode() == dns.rcode.NOERROR
+    first[1].close()
+    await asyncio.sleep(0.1)
+    assert (await tcp_query(port, 'www.example.org')).rcode() == dns.rcode.NOERROR
+
+
+async def test_tcp_queries_per_connection_limit(env, monkeypatch):
+    monkeypatch.setattr(server_module, 'MAX_TCP_QUERIES', 2)
+    _, server, port = await env()
+    reader, writer = await asyncio.open_connection('127.0.0.1', port)
+    await _tcp_exchange(reader, writer, 'www.example.org')
+    await _tcp_exchange(reader, writer, 'www.example.org')
+    with pytest.raises(asyncio.IncompleteReadError):
+        await _tcp_exchange(reader, writer, 'www.example.org')
+    writer.close()

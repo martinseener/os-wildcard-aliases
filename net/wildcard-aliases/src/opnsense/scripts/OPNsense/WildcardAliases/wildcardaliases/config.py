@@ -62,6 +62,9 @@ class Config:
     grace: int = 0
     max_hold: Optional[int] = None
     fail_closed: bool = True
+    # private and reserved addresses: 'block', 'allow', or 'domains' (only for private_domains)
+    private_addresses: str = 'block'
+    private_domains: tuple = ()
     verbose: bool = False
     cleanup_interval: int = 10
     state_interval: int = 60
@@ -161,6 +164,16 @@ def parse(data):
             raise ConfigError('table %s has neither IPv4 nor IPv6 enabled' % name)
         aliases.append(alias)
 
+    private_addresses = data.get('private_addresses') or 'block'
+    if private_addresses not in ('block', 'allow', 'domains'):
+        raise ConfigError('private_addresses must be "block", "allow" or "domains"')
+    private_domains = tuple(p.strip() for p in data.get('private_domains') or [] if p.strip())
+    for pattern in private_domains:
+        try:
+            Matcher.parse(pattern)
+        except ValueError as exc:
+            raise ConfigError('private_domains: %s' % exc)
+
     fail_mode = data.get('fail_mode', 'closed')
     if fail_mode not in ('closed', 'open'):
         raise ConfigError('fail_mode must be "closed" or "open"')
@@ -185,6 +198,8 @@ def parse(data):
         grace=_int(data, 'grace', 0),
         max_hold=_int(data, 'max_hold', None, minimum=1),
         fail_closed=fail_mode == 'closed',
+        private_addresses=private_addresses,
+        private_domains=private_domains,
         verbose=bool(data.get('verbose', False)),
         cleanup_interval=_int(data, 'cleanup_interval', 10, minimum=1),
         state_interval=_int(data, 'state_interval', 60, minimum=1),

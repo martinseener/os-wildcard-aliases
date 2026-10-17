@@ -110,6 +110,34 @@ class WildcardAliasesModelTest extends TestCase
         $this->assertEquals('', (string)$model->general->max_hold);
     }
 
+    public function testPublicListenNeedsOptIn()
+    {
+        foreach (['127.0.0.1:5354', '192.168.1.1:53', '[fd00::1]:53', '[::1]:5354', '10.0.0.1'] as $listen) {
+            $model = self::validModel();
+            $model->general->listen = $listen;
+            $this->assertEquals([], self::messages($model), $listen);
+        }
+        foreach (['0.0.0.0:53', '[::]:53', '8.8.8.8:53', '[2a01:4f8::1]:53'] as $listen) {
+            $model = self::validModel();
+            $model->general->listen = $listen;
+            $this->assertArrayHasKey('general.listen', self::messages($model), $listen);
+            $model->general->public_listen = '1';
+            $this->assertEquals([], self::messages($model), "$listen with opt-in");
+        }
+    }
+
+    public function testPrivateDomainsRequiredInDomainsMode()
+    {
+        $model = self::validModel();
+        $this->assertEquals('block', (string)$model->general->private_addresses);
+        $model->general->private_addresses = 'domains';
+        $this->assertArrayHasKey('general.private_domains', self::messages($model));
+        $model->general->private_domains = '*.corp.local';
+        $this->assertEquals([], self::messages($model));
+        $model->general->private_domains = 'a.*.corp.local';
+        $this->assertArrayHasKey('general.private_domains', self::messages($model));
+    }
+
     public function testOnlyOneHoldTimeSet()
     {
         $model = self::validModel();

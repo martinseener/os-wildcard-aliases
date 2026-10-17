@@ -56,6 +56,17 @@ class WildcardAliases extends BaseModel
     }
 
     /**
+     * wildcard (0.0.0.0, ::) or publicly routable address, as opposed to loopback, private and link-local
+     */
+    public static function isPublicListenAddress($host)
+    {
+        if (in_array(inet_pton($host), [inet_pton('0.0.0.0'), inet_pton('::')], true)) {
+            return true;
+        }
+        return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    /**
      * {@inheritdoc}
      */
     public function performValidation($validateFullModel = false)
@@ -86,6 +97,29 @@ class WildcardAliases extends BaseModel
                     $messages->appendMessage(new Message(
                         gettext('An upstream must not point to a listen address of Wildcard Aliases itself.'),
                         $node->__reference
+                    ));
+                }
+            }
+        }
+
+        if ((string)$this->general->private_addresses == 'domains' && empty((string)$this->general->private_domains)) {
+            $messages->appendMessage(new Message(
+                gettext('List the domains for which private addresses may be learned.'),
+                $this->general->private_domains->__reference
+            ));
+        }
+
+        // a wildcard or public listen address can turn this into an open resolver: require an explicit opt-in
+        if ((string)$this->general->public_listen != '1') {
+            foreach ($listen as $address) {
+                if (self::isPublicListenAddress($address[0])) {
+                    $messages->appendMessage(new Message(
+                        sprintf(gettext(
+                            '%s is a wildcard or public address: anyone who can reach it could use Wildcard Aliases ' .
+                            'as an open DNS resolver (e.g. for amplification attacks), unless firewall rules prevent it. ' .
+                            'If that is intended, tick "Allow public listen addresses" in advanced mode.'
+                        ), $address[0]),
+                        $this->general->listen->__reference
                     ));
                 }
             }

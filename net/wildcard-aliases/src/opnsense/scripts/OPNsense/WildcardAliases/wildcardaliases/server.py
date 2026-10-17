@@ -24,6 +24,7 @@
     POSSIBILITY OF SUCH DAMAGE.
 """
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -44,15 +45,26 @@ from .store import Store
 
 log = logging.getLogger('wildcardaliases')
 
-# limit the number of queries processed concurrently
+# limit the number of queries processed concurrently, more are refused right away
 MAX_INFLIGHT = 512
 TCP_IDLE_TIMEOUT = 10
+# concurrent TCP clients, and queries per TCP connection before it is closed
+MAX_TCP_CLIENTS = 256
+MAX_TCP_QUERIES = 100
 # write learned addresses to disk this many seconds after learning, so a restart loses little
 STATE_DELAY = 1.0
 
 
 class UpstreamError(Exception):
     pass
+
+
+def is_public(address):
+    """ False for private, loopback, link-local, CGNAT, documentation, multicast, ... addresses """
+    ip = ipaddress.ip_address(address)
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
 
 
 def _is_reply(data, query_id, question):
@@ -171,11 +183,13 @@ class WildcardAliasesServer:
         self.aliases = {}
         self.stats = {
             'queries': 0, 'matched': 0, 'learned': 0, 'upstream_errors': 0,
-            'backend_errors': 0, 'servfail_sent': 0, 'started': clock(),
+            'backend_errors': 0, 'servfail_sent': 0, 'private_ignored': 0, 'refused_overload': 0,
+            'started': clock(),
         }
         self._servers = []
         self._tasks = set()
         self._inflight = asyncio.Semaphore(MAX_INFLIGHT)
+        self._tcp_clients = 0
         self._lock = asyncio.Lock()
         self._housekeeping = None
         self._state_pending = None
@@ -189,6 +203,7 @@ class WildcardAliasesServer:
         self.config = config
         self.aliases = {alias.name: alias for alias in config.aliases}
         self.matcher = Matcher((alias.name, alias.patterns) for alias in config.aliases)
+        self.private_matcher = Matcher([('private', config.private_domains)])
         self.upstream = Upstream(config.upstreams, config.upstream_timeout)
         log.setLevel(logging.DEBUG if config.verbose else logging.INFO)
         return self.store.reconfigure({alias.name: alias.max_entries for alias in config.aliases})
@@ -295,8 +310,13 @@ class WildcardAliasesServer:
     # -- query handling ------------------------------------------------------------------
 
     async def _tcp_client(self, reader, writer):
+        if self._tcp_clients >= MAX_TCP_CLIENTS:
+            # protect the file descriptors UDP needs as well
+            writer.close()
+            return
+        self._tcp_clients += 1
         try:
-            while True:
+            for _ in range(MAX_TCP_QUERIES):
                 header = await asyncio.wait_for(reader.readexactly(2), TCP_IDLE_TIMEOUT)
                 length = struct.unpack('!H', header)[0]
                 data = await asyncio.wait_for(reader.readexactly(length), TCP_IDLE_TIMEOUT)
@@ -308,7 +328,17 @@ class WildcardAliasesServer:
         except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError):
             pass
         finally:
+            self._tcp_clients -= 1
             writer.close()
+
+    @staticmethod
+    def _refused(wire):
+        try:
+            response = dns.message.make_response(dns.message.from_wire(wire, question_only=True))
+        except Exception:
+            return None
+        response.set_rcode(dns.rcode.REFUSED)
+        return response.to_wire()
 
     @staticmethod
     def _servfail(query):
@@ -318,6 +348,11 @@ class WildcardAliasesServer:
 
     async def handle(self, wire, tcp=False):
         """ process one query, returns the response wire format (or None to stay silent) """
+        if self._inflight.locked():
+            # overloaded (or the upstream hangs): answer at once, so clients try elsewhere, instead
+            # of queueing without limit
+            self.stats['refused_overload'] += 1
+            return self._refused(wire)
         async with self._inflight:
             self.stats['queries'] += 1
             try:
@@ -357,12 +392,27 @@ class WildcardAliasesServer:
             log.warning('unparsable upstream response for %s', normalize(qname))
             return self._servfail(query) if self.config.fail_closed else response_wire
 
-        learned = extract(response, qname)
+        learned = self._filter_private(extract(response, qname), qname)
         if learned and not await self.learn(tables, learned, normalize(qname)):
             if self.config.fail_closed:
                 self.stats['servfail_sent'] += 1
                 return self._servfail(query)
         return response_wire
+
+    def _filter_private(self, learned, qname):
+        """ drop private and reserved addresses unless the configuration allows them for qname """
+        mode = self.config.private_addresses
+        if not learned or mode == 'allow' or (mode == 'domains' and self.private_matcher.match(qname)):
+            return learned
+        dropped = set()
+        for family in (learned.ipv4, learned.ipv6):
+            private = {address for address in family if not is_public(address)}
+            family -= private
+            dropped |= private
+        if dropped:
+            self.stats['private_ignored'] += len(dropped)
+            log.info('ignored private address(es) %s for %s', ', '.join(sorted(dropped)), normalize(qname))
+        return learned
 
     async def learn(self, tables, learned, qname=''):
         """ add learned addresses to the matching tables, returns False when pf could not be updated """

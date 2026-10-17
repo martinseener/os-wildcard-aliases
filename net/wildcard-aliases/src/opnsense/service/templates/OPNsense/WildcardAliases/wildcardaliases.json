@@ -20,6 +20,8 @@
     'grace': general.grace|int if general.grace|default('') else none,
     'max_hold': general.max_hold|int if general.max_hold|default('') else none,
     'fail_mode': general.fail_mode|default('closed'),
+    'private_addresses': general.private_addresses|default('block'),
+    'private_domains': (general.private_domains|default('')).split(',') if general.private_domains|default('') else [],
     'verbose': general.verbose|default('0') == '1',
     'aliases': aliases
 } | tojson }}

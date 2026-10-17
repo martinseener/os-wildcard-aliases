@@ -96,3 +96,13 @@ def test_json_template_empty_hold_times_follow_ttl():
 def test_rc_conf_template():
     assert 'wildcardaliases_enable="YES"' in render('rc.conf.d', CONFIG)
     assert 'wildcardaliases_enable="NO"' in render('rc.conf.d', {'OPNsense': {}})
+
+
+def test_json_template_private_addresses():
+    rendered = json.loads(render('wildcardaliases.json', CONFIG))
+    assert rendered['private_addresses'] == 'block' and rendered['private_domains'] == []
+    data = json.loads(json.dumps(CONFIG))
+    data['OPNsense']['WildcardAliases']['general'].update(
+        private_addresses='domains', private_domains='*.corp.local,nas.home.arpa')
+    cfg = parse(json.loads(render('wildcardaliases.json', data)))
+    assert cfg.private_domains == ('*.corp.local', 'nas.home.arpa')

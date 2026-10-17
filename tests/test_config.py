@@ -50,6 +50,8 @@ def test_parse_address_invalid(value):
     {'aliases': [{'name': 'a', 'patterns': ['x.com'], 'inet': False, 'inet6': False}]},
     {'fail_mode': 'maybe'},
     {'min_hold': -1},
+    {'private_addresses': 'sometimes'},
+    {'private_domains': ['x.*.com']},
     {'upstream_timeout': 0},
 ])
 def test_invalid_configs(change):
@@ -87,3 +89,10 @@ def test_load(tmp_path):
     path.write_text('{nope')
     with pytest.raises(ConfigError):
         load(str(path))
+
+
+def test_private_address_settings():
+    cfg = parse(base())
+    assert cfg.private_addresses == 'block' and cfg.private_domains == ()
+    cfg = parse(base(private_addresses='domains', private_domains=['*.corp.local', ' ']))
+    assert cfg.private_addresses == 'domains' and cfg.private_domains == ('*.corp.local',)

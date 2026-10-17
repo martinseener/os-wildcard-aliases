@@ -54,6 +54,30 @@
         <advanced>true</advanced>
     </field>
     <field>
+        <id>wildcardaliases.general.private_addresses</id>
+        <label>Private addresses</label>
+        <type>dropdown</type>
+        <help>Whether private and reserved addresses (10/8, 172.16/12, 192.168/16, 100.64/10, 127/8, link-local, fc00::/7, documentation and multicast ranges) may be learned. Ignoring them prevents DNS rebinding: a public name pointing to e.g. your NAS would otherwise open your allow rules towards your own network. Allow them only for internal names you trust.</help>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>wildcardaliases.general.private_domains</id>
+        <label>Domains with private addresses</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+        <allownew>true</allownew>
+        <hint>e.g. *.corp.local</hint>
+        <help>Only with "Allow for the listed domains only": names matching these patterns may resolve to private addresses. "corp.local" matches only that name, "*.corp.local" every name below it.</help>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>wildcardaliases.general.public_listen</id>
+        <label>Allow public listen addresses</label>
+        <type>checkbox</type>
+        <help>Required to listen on 0.0.0.0, :: or a public address. Only do this if firewall rules keep untrusted networks (WAN) away from these addresses, otherwise this is an open DNS resolver.</help>
+        <advanced>true</advanced>
+    </field>
+    <field>
         <id>wildcardaliases.general.verbose</id>
         <label>Verbose logging</label>
         <type>checkbox</type>

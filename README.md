@@ -147,6 +147,19 @@ No extra packages are needed: dnspython is already a dependency of OPNsense core
 * **Wildcards include other people's names.** Anyone can create `something.blob.core.windows.net`.
   An allow rule for `*.blob.core.windows.net` therefore also allows uploads to storage accounts that
   aren't yours. Be as specific as the service allows.
+* **CNAMEs can point anywhere.** Addresses are learned along the whole CNAME chain, because
+  services rely on it (`*.blob.core.windows.net` points to `*.store.core.windows.net`). If names
+  below a watched domain can be pointed at arbitrary targets (Traffic Manager, CDNs, hosting
+  platforms with custom domains), their owners decide which addresses your alias allows.
+* **Private addresses are ignored by default.** A public name resolving to e.g. `192.168.1.10`
+  would otherwise open an allow rule towards your own network (DNS rebinding). Settings → advanced
+  mode → "Private addresses" allows them for all names or only for listed domains (`*.corp.local`).
+* **Listening on wildcard or public addresses** (`0.0.0.0`, `::`, public IPs) needs the explicit
+  opt-in "Allow public listen addresses": without firewall rules keeping WAN away, that is an open
+  DNS resolver. Like Unbound, the daemon itself answers every client that reaches it.
+* **Overload:** at most 512 queries are processed at once, more are refused right away (clients
+  then use their next server or AdGuard its fallback). TCP is limited to 256 connections and 100
+  queries per connection.
 * **Shared addresses.** CDN and cloud addresses serve many names. An allowed address is allowed for
   everything hosted on it. For strict control, combine Wildcard Aliases with SNI inspection (e.g. Suricata
   `tls.sni` rules).
