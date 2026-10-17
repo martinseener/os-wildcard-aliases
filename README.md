@@ -153,7 +153,8 @@ No extra packages are needed: dnspython is already a dependency of OPNsense core
   platforms with custom domains), their owners decide which addresses your alias allows.
 * **Private addresses are ignored by default.** A public name resolving to e.g. `192.168.1.10`
   would otherwise open an allow rule towards your own network (DNS rebinding). Settings → advanced
-  mode → "Private addresses" allows them for all names or only for listed domains (`*.corp.local`).
+  mode → "Private addresses" allows them for all names or only for listed domains (`*.corp.local`;
+  the list is only editable in that mode).
 * **Listening on wildcard or public addresses** (`0.0.0.0`, `::`, public IPs) needs the explicit
   opt-in "Allow public listen addresses": without firewall rules keeping WAN away, that is an open
   DNS resolver. Like Unbound, the daemon itself answers every client that reaches it.

@@ -26,9 +26,29 @@
 
 <script>
     $(document).ready(function() {
+        // the domain list only applies to "Allow for the listed domains only"
+        function updatePrivateDomains() {
+            const enabled = $('#wildcardaliases\\.general\\.private_addresses').val() === 'domains';
+            const $field = $('#wildcardaliases\\.general\\.private_domains');
+            $field.prop('disabled', !enabled);
+            if ($field.hasClass('tokenize2_init_done')) {
+                if (enabled) {
+                    $field.tokenize2().enable();
+                } else {
+                    $field.tokenize2().disable();
+                }
+            }
+            // "Clear All", "Copy" and "Text" next to the field (OPNsense shows "Paste" itself when needed)
+            ['clear-options_', 'copy-options_', 'to-text_'].forEach(function (prefix) {
+                $(document.getElementById(prefix + 'wildcardaliases.general.private_domains')).toggle(enabled);
+            });
+        }
+        $('#wildcardaliases\\.general\\.private_addresses').on('change', updatePrivateDomains);
+
         mapDataToFormUI({'frm_general': '/api/wildcardaliases/settings/get'}).done(function() {
             formatTokenizersUI();
             $('.selectpicker').selectpicker('refresh');
+            updatePrivateDomains();
             updateServiceControlUI('wildcardaliases');
         });
 

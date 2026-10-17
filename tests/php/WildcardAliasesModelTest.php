@@ -138,6 +138,26 @@ class WildcardAliasesModelTest extends TestCase
         $this->assertArrayHasKey('general.private_domains', self::messages($model));
     }
 
+    public function testPatternsMustBeDomains()
+    {
+        foreach (['corp.local', '*.lan', '*.corp.local,nas.home.arpa', 'xn--bcher-kva.example'] as $value) {
+            $model = self::validModel();
+            $model->general->private_addresses = 'domains';
+            $model->general->private_domains = $value;
+            $wildcard = self::addWildcard($model, 'pattern_test', $value);
+            $this->assertEquals([], self::messages($model), $value);
+        }
+        foreach (['sdsd', '*', 'foo.123', '*.lan,sdsd', '.local'] as $value) {
+            $model = self::validModel();
+            $model->general->private_addresses = 'domains';
+            $model->general->private_domains = $value;
+            $wildcard = self::addWildcard($model, 'pattern_test', $value);
+            $messages = self::messages($model);
+            $this->assertArrayHasKey('general.private_domains', $messages, $value);
+            $this->assertArrayHasKey($wildcard->patterns->__reference, $messages, $value);
+        }
+    }
+
     public function testOnlyOneHoldTimeSet()
     {
         $model = self::validModel();

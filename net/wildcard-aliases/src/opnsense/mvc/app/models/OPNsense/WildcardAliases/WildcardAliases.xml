@@ -45,8 +45,8 @@
                 </OptionValues>
             </private_addresses>
             <private_domains type="CSVListField">
-                <Mask>/^(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(,(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i</Mask>
-                <ValidationMessage>Use domain names (corp.example) or wildcards (*.corp.example).</ValidationMessage>
+                <Mask>/^(\*\.([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*|([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+)[a-z]([a-z0-9-]{0,61}[a-z0-9])?(,(\*\.([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*|([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+)[a-z]([a-z0-9-]{0,61}[a-z0-9])?)*$/i</Mask>
+                <ValidationMessage>Use domain names with at least one dot (nas.corp.local) or wildcards (*.corp.local, *.lan).</ValidationMessage>
             </private_domains>
             <public_listen type="BooleanField">
                 <Default>0</Default>
@@ -76,8 +76,8 @@
                 </name>
                 <patterns type="CSVListField">
                     <Required>Y</Required>
-                    <Mask>/^(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(,(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i</Mask>
-                    <ValidationMessage>Use domain names (example.com) or wildcards (*.example.com). Internationalized names must be entered in their xn-- form.</ValidationMessage>
+                    <Mask>/^(\*\.([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*|([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+)[a-z]([a-z0-9-]{0,61}[a-z0-9])?(,(\*\.([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*|([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)+)[a-z]([a-z0-9-]{0,61}[a-z0-9])?)*$/i</Mask>
+                    <ValidationMessage>Use domain names with at least one dot (example.com) or wildcards (*.example.com, *.lan). Internationalized names must be entered in their xn-- form.</ValidationMessage>
                 </patterns>
                 <families type="OptionField">
                     <Default>IPv4,IPv6</Default>
