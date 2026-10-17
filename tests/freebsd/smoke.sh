@@ -60,6 +60,26 @@ sleep 2
 query api.github.com > /dev/null
 pfctl -t smoke_test2 -T show | grep -q . || fail "reload did not apply the new alias"
 
+echo ">>> package upgrade: a running daemon gets the new code"
+OLD="$(cat ${CHILD})"
+sh "${SRC}/../+POST_INSTALL.post"
+sleep 2
+[ "$(cat ${CHILD})" != "${OLD}" ] || fail "post-install did not restart the daemon"
+[ -n "$(query api.github.com)" ] || fail "no answer after the post-install restart"
+
+echo ">>> upgrade from before 0.3: replace a daemon running without daemon(8)"
+service wildcardaliases stop
+/usr/local/bin/python3 ${SCRIPTS}/wildcardaliasesd.py -f --syslog &
+echo $! > ${SUPERVISOR}
+sleep 2
+[ -n "$(query api.github.com)" ] || fail "legacy-style daemon does not answer"
+LEGACY="$(cat ${SUPERVISOR})"
+sh "${SRC}/../+POST_INSTALL.post"
+sleep 3
+kill -0 "${LEGACY}" 2> /dev/null && fail "legacy daemon still running"
+service wildcardaliases status || fail "not running under daemon(8) after the upgrade"
+[ -n "$(query api.github.com)" ] || fail "no answer after replacing the legacy daemon"
+
 echo ">>> stop: nothing may be left running"
 service wildcardaliases stop
 sleep 1

@@ -1,0 +1,17 @@
+PIDFILE=/var/run/wildcardaliases.pid
+PID=$(cat ${PIDFILE} 2> /dev/null || true)
+if [ -n "${PID}" ] && ps -o command= -p "${PID}" 2> /dev/null | grep -q 'wildcardaliasesd.py'; then
+	# before 0.3 the daemon ran without daemon(8), rc.d no longer recognises it: replace it
+	echo "Restarting Wildcard Aliases under daemon(8)"
+	kill "${PID}"
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		kill -0 "${PID}" 2> /dev/null || break
+		sleep 1
+	done
+	rm -f ${PIDFILE}
+	/usr/sbin/service wildcardaliases start
+elif /usr/local/etc/rc.d/wildcardaliases status > /dev/null 2>&1; then
+	# load the new code
+	echo "Restarting Wildcard Aliases"
+	/usr/sbin/service wildcardaliases restart
+fi
