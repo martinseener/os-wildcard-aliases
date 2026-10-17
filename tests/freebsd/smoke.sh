@@ -11,10 +11,16 @@ SCRIPTS=/usr/local/opnsense/scripts/OPNsense/WildcardAliases
 CHILD=/var/run/wildcardaliases.child.pid
 SUPERVISOR=/var/run/wildcardaliases.pid
 
-fail() { echo "FAIL: $*"; tail -30 /var/log/messages; exit 1; }
+LOG=/var/log/wildcardaliases-smoke.log
+
+fail() { echo "FAIL: $*"; tail -30 "${LOG}"; exit 1; }
 query() { drill -Q -p 5354 @127.0.0.1 "$1" A; }
 
 kldstat -q -m pf || kldload pf
+# stock FreeBSD drops daemon.info messages (OPNsense keeps them), collect them for the checks below
+echo "daemon.*	${LOG}" >> /etc/syslog.conf
+touch "${LOG}"
+service syslogd restart
 
 mkdir -p "${SCRIPTS}" /usr/local/etc/wildcardaliases
 cp -R "${SRC}/opnsense/scripts/OPNsense/WildcardAliases/" "${SCRIPTS}/"
@@ -61,5 +67,6 @@ pgrep -f wildcardaliasesd.py && fail "daemon still running after stop"
 [ ! -f "${CHILD}" ] || fail "child pidfile left behind"
 [ "$(stat -f %Lp /var/db/wildcardaliases/state.json)" = "600" ] || fail "state.json is not mode 600"
 
-grep -q 'wildcardaliases.*started' /var/log/messages || fail "no start message in syslog"
+# one start, plus one after the crash
+[ "$(grep -c 'wildcardaliases.*started with' "${LOG}")" -ge 2 ] || fail "start messages missing in syslog"
 echo "OK"
