@@ -1,0 +1,9 @@
+<acl>
+    <page-firewall-wildcardaliases>
+        <name>Firewall: Wildcard Aliases</name>
+        <patterns>
+            <pattern>ui/wildcardaliases/*</pattern>
+            <pattern>api/wildcardaliases/*</pattern>
+        </patterns>
+    </page-firewall-wildcardaliases>
+</acl>

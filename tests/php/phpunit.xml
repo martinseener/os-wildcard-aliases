@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="./bootstrap.php" colors="false" failOnWarning="true" failOnNotice="true">
+    <testsuites>
+        <testsuite name="wildcardaliases">
+            <directory suffix="Test.php">.</directory>
+        </testsuite>
+    </testsuites>
+    <!-- only report warnings/notices raised by our own code, not by the core checkout -->
+    <source restrictNotices="true" restrictWarnings="true">
+        <include>
+            <directory>../../net</directory>
+        </include>
+    </source>
+</phpunit>

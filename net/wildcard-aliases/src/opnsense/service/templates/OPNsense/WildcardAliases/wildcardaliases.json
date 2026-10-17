@@ -1,0 +1,28 @@
+{% set aliases = [] %}
+{% for alias in helpers.toList('OPNsense.WildcardAliases.aliases.alias') %}
+{%   if alias.enabled|default('0') == '1' %}
+{%     set families = (alias.families|default('')).split(',') %}
+{%     do aliases.append({
+          'name': alias.name,
+          'patterns': (alias.patterns|default('')).split(','),
+          'inet': 'IPv4' in families,
+          'inet6': 'IPv6' in families,
+          'max_entries': alias.max_entries|default('4096')|int
+       }) %}
+{%   endif %}
+{% endfor %}
+{% if helpers.exists('OPNsense.WildcardAliases.general') %}
+{%   set general = OPNsense.WildcardAliases.general %}
+{{ {
+    'listen': (general.listen|default('127.0.0.1:5354')).split(','),
+    'upstreams': (general.upstreams|default('')).split(',') if general.upstreams|default('') else [],
+    'min_hold': general.min_hold|default('300')|int,
+    'grace': general.grace|default('60')|int,
+    'max_hold': general.max_hold|default('86400')|int,
+    'fail_mode': general.fail_mode|default('closed'),
+    'verbose': general.verbose|default('0') == '1',
+    'aliases': aliases
+} | tojson }}
+{% else %}
+{{ {'listen': ['127.0.0.1:5354'], 'upstreams': [], 'aliases': []} | tojson }}
+{% endif %}

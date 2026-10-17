@@ -1,0 +1,2 @@
+rc.conf.d:/etc/rc.conf.d/wildcardaliases
+wildcardaliases.json:/usr/local/etc/wildcardaliases/wildcardaliases.json

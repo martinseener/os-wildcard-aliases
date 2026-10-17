@@ -1,0 +1,90 @@
+<model>
+    <mount>//OPNsense/WildcardAliases</mount>
+    <version>0.1.0</version>
+    <description>Wildcard Aliases: DNS-learned wildcard FQDN aliases</description>
+    <items>
+        <general>
+            <enabled type="BooleanField">
+                <Default>0</Default>
+                <Required>Y</Required>
+            </enabled>
+            <listen type="CSVListField">
+                <Default>127.0.0.1:5354</Default>
+                <Required>Y</Required>
+            </listen>
+            <upstreams type="CSVListField">
+                <Required>Y</Required>
+            </upstreams>
+            <min_hold type="IntegerField">
+                <Default>300</Default>
+                <Required>Y</Required>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>604800</MaximumValue>
+            </min_hold>
+            <grace type="IntegerField">
+                <Default>60</Default>
+                <Required>Y</Required>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>86400</MaximumValue>
+            </grace>
+            <max_hold type="IntegerField">
+                <Default>86400</Default>
+                <Required>Y</Required>
+                <MinimumValue>60</MinimumValue>
+                <MaximumValue>604800</MaximumValue>
+            </max_hold>
+            <fail_mode type="OptionField">
+                <Default>closed</Default>
+                <Required>Y</Required>
+                <OptionValues>
+                    <closed>Closed (answer SERVFAIL when the table cannot be updated)</closed>
+                    <open>Open (pass the answer anyway)</open>
+                </OptionValues>
+            </fail_mode>
+            <verbose type="BooleanField">
+                <Default>0</Default>
+                <Required>Y</Required>
+            </verbose>
+        </general>
+        <aliases>
+            <alias type="ArrayField">
+                <enabled type="BooleanField">
+                    <Default>1</Default>
+                    <Required>Y</Required>
+                </enabled>
+                <name type="TextField">
+                    <Required>Y</Required>
+                    <Mask>/^[A-Za-z_][A-Za-z0-9_]{0,30}$/</Mask>
+                    <ValidationMessage>The name must start with a letter or underscore and may only contain letters, digits and underscores (max. 31 characters).</ValidationMessage>
+                    <Constraints>
+                        <check001>
+                            <ValidationMessage>A wildcard alias with this name already exists.</ValidationMessage>
+                            <type>UniqueConstraint</type>
+                        </check001>
+                    </Constraints>
+                </name>
+                <patterns type="CSVListField">
+                    <Required>Y</Required>
+                    <Mask>/^(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(,(\*\.)?([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i</Mask>
+                    <ValidationMessage>Use domain names (example.com) or wildcards (*.example.com). Internationalized names must be entered in their xn-- form.</ValidationMessage>
+                </patterns>
+                <families type="OptionField">
+                    <Default>IPv4,IPv6</Default>
+                    <Required>Y</Required>
+                    <Multiple>Y</Multiple>
+                    <OptionValues>
+                        <IPv4/>
+                        <IPv6/>
+                    </OptionValues>
+                </families>
+                <max_entries type="IntegerField">
+                    <Default>4096</Default>
+                    <Required>Y</Required>
+                    <MinimumValue>16</MinimumValue>
+                    <MaximumValue>1000000</MaximumValue>
+                </max_entries>
+                <description type="DescriptionField"/>
+            </alias>
+        </aliases>
+    </items>
+</model>

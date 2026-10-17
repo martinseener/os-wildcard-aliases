@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# PROVIDE: wildcardaliases
+# REQUIRE: SERVERS
+# BEFORE: DAEMON
+# KEYWORD: shutdown
+#
+
+. /etc/rc.subr
+
+name=wildcardaliases
+rcvar=wildcardaliases_enable
+command=/usr/local/opnsense/scripts/OPNsense/WildcardAliases/wildcardaliasesd.py
+command_interpreter=/usr/local/bin/python3
+pidfile="/var/run/${name}.pid"
+required_files="/usr/local/etc/wildcardaliases/wildcardaliases.json"
+extra_commands="reload configtest"
+sig_reload="HUP"
+configtest_cmd="wildcardaliases_configtest"
+start_precmd="wildcardaliases_configtest"
+
+load_rc_config $name
+
+: ${wildcardaliases_enable:=NO}
+
+command_args="-p ${pidfile}"
+
+wildcardaliases_configtest()
+{
+    ${command_interpreter} ${command} -t
+}
+
+run_rc_command "$1"

@@ -1,0 +1,16 @@
+Wildcard Aliases provides firewall aliases for wildcard domain patterns such as
+*.core.windows.net, which cannot be resolved ahead of time.
+
+A small DNS forwarder sits in the resolver chain (for example as a per-domain
+upstream of Unbound or AdGuard Home). For every answer to a matching name it
+adds the returned addresses to a pf table before the answer is passed on to
+the client, and removes them again once the DNS TTL (plus a grace period) has
+expired. Each table is available as an "External (advanced)" alias for use in
+regular firewall rules.
+
+Plugin Changelog
+================
+
+0.1
+
+* Initial release

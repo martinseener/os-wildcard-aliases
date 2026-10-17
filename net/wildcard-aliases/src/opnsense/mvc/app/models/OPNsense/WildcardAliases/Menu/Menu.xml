@@ -1,0 +1,5 @@
+<menu>
+    <Firewall>
+        <WildcardAliases VisibleName="Wildcard Aliases" cssClass="fa fa-eye fa-fw" url="/ui/wildcardaliases" order="25"/>
+    </Firewall>
+</menu>

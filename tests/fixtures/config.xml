@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<opnsense>
+  <system>
+    <hostname>test</hostname>
+  </system>
+  <OPNsense>
+    <WildcardAliases version="0.1.0">
+      <general>
+        <enabled>1</enabled>
+        <listen>127.0.0.1:5354</listen>
+        <upstreams>127.0.0.1:5353</upstreams>
+        <min_hold>300</min_hold>
+        <grace>60</grace>
+        <max_hold>86400</max_hold>
+        <fail_mode>closed</fail_mode>
+        <verbose>0</verbose>
+      </general>
+      <aliases>
+        <alias uuid="0b7c5d1e-6a7f-4f39-9a43-3a1f8b0a0001">
+          <enabled>1</enabled>
+          <name>azure_storage</name>
+          <patterns>*.blob.core.windows.net,login.microsoftonline.com</patterns>
+          <families>IPv4,IPv6</families>
+          <max_entries>4096</max_entries>
+          <description>Azure storage &amp; login</description>
+        </alias>
+        <alias uuid="0b7c5d1e-6a7f-4f39-9a43-3a1f8b0a0002">
+          <enabled>0</enabled>
+          <name>disabled_obj</name>
+          <patterns>*.example.com</patterns>
+          <families>IPv4</families>
+          <max_entries>16</max_entries>
+          <description/>
+        </alias>
+        <alias uuid="0b7c5d1e-6a7f-4f39-9a43-3a1f8b0a0003">
+          <enabled>1</enabled>
+          <name>v4only</name>
+          <patterns>*.example.org</patterns>
+          <families>IPv4</families>
+          <max_entries>100</max_entries>
+          <description/>
+        </alias>
+      </aliases>
+    </WildcardAliases>
+  </OPNsense>
+</opnsense>

@@ -1,0 +1,47 @@
+<form>
+    <field>
+        <id>alias.enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+        <help>Disabled aliases are not watched and their table is flushed.</help>
+        <grid_view>
+            <width>6em</width>
+            <type>boolean</type>
+            <formatter>rowtoggle</formatter>
+        </grid_view>
+    </field>
+    <field>
+        <id>alias.name</id>
+        <label>Alias name</label>
+        <type>text</type>
+        <help>Name of the firewall alias (type "External") that holds the learned addresses. It is created automatically and can be used in rules like any other alias.</help>
+    </field>
+    <field>
+        <id>alias.patterns</id>
+        <label>Domain patterns</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+        <allownew>true</allownew>
+        <help>Names to watch: "example.com" matches only that name, "*.example.com" matches every name below example.com (but not example.com itself). Add both if you need both.</help>
+    </field>
+    <field>
+        <id>alias.families</id>
+        <label>Address families</label>
+        <type>select_multiple</type>
+        <help>Which address types (A/AAAA records and HTTPS hints) to add to the table.</help>
+    </field>
+    <field>
+        <id>alias.max_entries</id>
+        <label>Maximum entries</label>
+        <type>text</type>
+        <help>Upper limit for the table size. When reached, the entries closest to expiry are removed first.</help>
+        <grid_view>
+            <visible>false</visible>
+        </grid_view>
+    </field>
+    <field>
+        <id>alias.description</id>
+        <label>Description</label>
+        <type>text</type>
+    </field>
+</form>
