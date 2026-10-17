@@ -62,6 +62,13 @@ class WildcardAliases extends BaseModel
     {
         $messages = parent::performValidation($validateFullModel);
 
+        if ((string)$this->general->enabled == '1' && empty((string)$this->general->upstreams)) {
+            $messages->appendMessage(new Message(
+                gettext('At least one upstream server is required when Wildcard Aliases is enabled.'),
+                $this->general->upstreams->__reference
+            ));
+        }
+
         // cheap enough to always check both, the upstream loop check depends on the listen addresses
         $listen = [];
         foreach (['listen', 'upstreams'] as $field) {

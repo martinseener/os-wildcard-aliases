@@ -67,10 +67,21 @@ class WildcardAliasesModelTest extends TestCase
         $this->assertEquals([], self::messages($model));
     }
 
-    public function testUpstreamIsRequired()
+    public function testUpstreamIsRequiredWhenEnabled()
     {
         $model = new WildcardAliases();
+        $this->assertEquals([], self::messages($model), 'the defaults of a fresh install must validate');
+        $model->general->enabled = '1';
         $this->assertArrayHasKey('general.upstreams', self::messages($model));
+    }
+
+    public function testFreshInstallMigration()
+    {
+        // what run_migrations.php does on package install, with no settings in config.xml yet
+        $this->assertTrue((new WildcardAliases())->runMigrations());
+        Config::getInstance()->save();
+        Config::getInstance()->forceReload();
+        $this->assertEquals('0.1.0', (new WildcardAliases())->getVersion());
     }
 
     public function testInvalidAddresses()

@@ -12,9 +12,8 @@
                 <Default>127.0.0.1:5354</Default>
                 <Required>Y</Required>
             </listen>
-            <upstreams type="CSVListField">
-                <Required>Y</Required>
-            </upstreams>
+            <!-- only required when enabled (see performValidation), so a fresh install validates -->
+            <upstreams type="CSVListField"/>
             <min_hold type="IntegerField">
                 <Default>300</Default>
                 <Required>Y</Required>
