@@ -125,8 +125,10 @@ No extra packages are needed: dnspython is already a dependency of OPNsense core
 
    * *All queries*: put the daemon in front of Unbound. In Services → Unbound DNS → General, set the
      port to `5353`, and limit it to Localhost if possible. Otherwise block port 5353 to the firewall
-     from your networks. Set the daemon's listen addresses to the firewall's interface addresses on
-     port 53 (e.g. `192.168.1.1:53,[fd00::1]:53`) and its upstream to `127.0.0.1:5353`. Point DNS
+     from your networks. Set the daemon's listen addresses to `127.0.0.1:53` plus the firewall's
+     interface addresses on port 53 (e.g. `127.0.0.1:53,192.168.1.1:53,[fd00::1]:53`) and its upstream
+     to `127.0.0.1:5353`. The `127.0.0.1:53` listener keeps the firewall's own lookups working, which
+     go to its local resolver on port 53 and would otherwise find nothing there after the move. Point DNS
      redirect rules, if you have any, at port 53 as before. The daemon has no cache of its own, and
      Unbound sees all queries as coming from 127.0.0.1, so per-client Unbound statistics and
      blocklist reports stop being useful.
