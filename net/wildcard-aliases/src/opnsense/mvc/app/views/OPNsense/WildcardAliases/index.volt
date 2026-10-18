@@ -86,27 +86,26 @@
                 const $body = $('#stats_table > tbody').empty();
                 const rows = (data && data.tables) ? data.tables : [];
                 if (rows.length === 0) {
-                    $body.append($('<tr>').append($('<td colspan="5">').text("{{ lang._('No data, the service is not running or nothing was learned yet.') }}")));
+                    $body.append($('<tr>').append($('<td colspan="5" class="text-muted">').text("{{ lang._('No data, the service is not running or nothing was learned yet.') }}")));
                 }
                 rows.forEach(function(row) {
                     const last = row.last_learned ? new Date(row.last_learned * 1000).toLocaleString() : '-';
                     $body.append($('<tr>').append(
-                        $('<td>').text(row.name),
+                        $('<td>').append($('<strong>').text(row.name)),
                         $('<td>').text(row.patterns),
-                        $('<td>').text(row.entries + ' / ' + row.max_entries),
-                        $('<td>').text(row.learned_total + (row.evicted_total ? ' (' + row.evicted_total + " {{ lang._('evicted') }})" : '')),
-                        $('<td>').text(last)
+                        $('<td class="text-right">').text(row.entries + ' / ' + row.max_entries),
+                        $('<td class="text-right">').text(row.learned_total + (row.evicted_total ? ' (' + row.evicted_total + " {{ lang._('evicted') }})" : '')),
+                        $('<td class="text-right">').text(last)
                     ));
                 });
                 const stats = (data && data.stats) ? data.stats : {};
-                $('#stats_summary').text(stats.queries !== undefined ?
-                    "{{ lang._('Queries') }}: " + stats.queries + ', ' +
-                    "{{ lang._('watched') }}: " + stats.matched + ', ' +
-                    "{{ lang._('exact names resolved') }}: " + (stats.prefetched || 0) + ', ' +
-                    "{{ lang._('upstream errors') }}: " + stats.upstream_errors + ', ' +
-                    "{{ lang._('table errors') }}: " + stats.backend_errors + ', ' +
-                    "{{ lang._('private addresses ignored') }}: " + (stats.private_ignored || 0) + ', ' +
-                    "{{ lang._('refused (overload)') }}: " + (stats.refused_overload || 0) : '');
+                $('#stats_summary .wa-stat').each(function () {
+                    const value = stats[$(this).data('stat')];
+                    $(this).find('.wa-stat-value').text(value !== undefined ? value : '-');
+                    // problems stand out as soon as they occur
+                    $(this).toggleClass('wa-stat-alert', $(this).data('alert') === true && value > 0);
+                });
+                $('#stats_updated').text("{{ lang._('Updated') }} " + new Date().toLocaleTimeString());
             });
         }
 
@@ -174,6 +173,21 @@
     });
 </script>
 
+<style>
+    .wa-status { padding: 15px 20px 20px; }
+    .wa-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .wa-toolbar h4 { margin: 0; }
+    .wa-toolbar #stats_updated { margin-right: 8px; }
+    .wa-stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 28px; }
+    .wa-stat { flex: 1 1 130px; padding: 12px 14px; border: 1px solid rgba(128, 128, 128, 0.3); border-radius: 4px; }
+    .wa-stat-value { font-size: 22px; font-weight: 600; line-height: 1.2; }
+    .wa-stat-label { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+    .wa-stat-alert { border-color: #d9534f; }
+    .wa-stat-alert .wa-stat-value { color: #d9534f; }
+    .wa-status h4 + .table { margin-top: 10px; }
+    .wa-hint { margin: 15px 0 0; }
+</style>
+
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
     <li class="active"><a data-toggle="tab" href="#aliases">{{ lang._('Aliases') }}</a></li>
     <li><a data-toggle="tab" href="#general">{{ lang._('Settings') }}</a></li>
@@ -189,22 +203,42 @@
         {{ partial('layout_partials/base_form', ['fields': generalForm, 'id': 'frm_general']) }}
     </div>
     <div id="status" class="tab-pane fade in">
-        <div class="col-md-12">
-            <p id="stats_summary"></p>
-            <table class="table table-striped table-condensed" id="stats_table">
+        <div class="wa-status">
+            <div class="wa-toolbar">
+                <h4>{{ lang._('Daemon statistics') }} <small>{{ lang._('since the last start') }}</small></h4>
+                <div>
+                    <span id="stats_updated" class="text-muted"></span>
+                    <button class="btn btn-default btn-sm" id="refreshStats" type="button">
+                        <i class="fa fa-refresh fa-fw"></i> {{ lang._('Refresh') }}
+                    </button>
+                </div>
+            </div>
+            <div class="wa-stats" id="stats_summary">
+                <div class="wa-stat" data-stat="queries"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Queries') }}</div></div>
+                <div class="wa-stat" data-stat="matched"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Watched') }}</div></div>
+                <div class="wa-stat" data-stat="prefetched"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Exact names resolved') }}</div></div>
+                <div class="wa-stat" data-stat="private_ignored"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Private addresses ignored') }}</div></div>
+                <div class="wa-stat" data-stat="upstream_errors" data-alert="true"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Upstream errors') }}</div></div>
+                <div class="wa-stat" data-stat="backend_errors" data-alert="true"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Table errors') }}</div></div>
+                <div class="wa-stat" data-stat="refused_overload" data-alert="true"><div class="wa-stat-value">-</div><div class="wa-stat-label">{{ lang._('Refused (overload)') }}</div></div>
+            </div>
+            <h4>{{ lang._('Wildcard aliases') }}</h4>
+            <table class="table table-striped table-condensed table-hover" id="stats_table">
                 <thead>
                     <tr>
                         <th>{{ lang._('Alias') }}</th>
                         <th>{{ lang._('Patterns') }}</th>
-                        <th>{{ lang._('Entries') }}</th>
-                        <th>{{ lang._('Learned') }}</th>
-                        <th>{{ lang._('Last learned') }}</th>
+                        <th class="text-right">{{ lang._('Entries') }}</th>
+                        <th class="text-right">{{ lang._('Learned') }}</th>
+                        <th class="text-right">{{ lang._('Last learned') }}</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
             </table>
-            <button class="btn btn-default" id="refreshStats" type="button">{{ lang._('Refresh') }}</button>
-            <p class="text-muted">{{ lang._('The learned addresses of each alias are listed in the "Learned addresses" tab.') }}</p>
+            <p class="text-muted wa-hint">
+                <i class="fa fa-info-circle fa-fw"></i>
+                {{ lang._('The learned addresses of each alias are listed in the "Learned addresses" tab.') }}
+            </p>
         </div>
     </div>
     <div id="entries" class="tab-pane fade in">

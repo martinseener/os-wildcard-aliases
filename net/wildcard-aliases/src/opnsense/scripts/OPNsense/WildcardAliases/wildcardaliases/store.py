@@ -70,9 +70,11 @@ class TableState:
             elif expires > current:
                 self.entries[address] = expires
         evicted = []
+        if addresses:
+            # also when known addresses are only confirmed again (e.g. refreshed exact names)
+            self.last_learned = now
         if new:
             self.learned_total += len(new)
-            self.last_learned = now
             overflow = len(self.entries) - self.max_entries
             if overflow > 0:
                 # drop the entries closest to expiry, prefer keeping what we just learned
