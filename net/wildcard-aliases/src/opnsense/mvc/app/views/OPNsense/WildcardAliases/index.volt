@@ -164,11 +164,10 @@
                 entriesWanted = null;
                 $select.empty();
                 ((data && data.tables) || []).forEach(function (row) {
-                    $select.append($('<option>').val(row.name).text(row.name));
+                    // mark it as the default selection: bootstrap-select replaces a first option that
+                    // was only selected via .val() by its "Select a wildcard alias" placeholder
+                    $select.append($('<option>').val(row.name).text(row.name).attr('selected', row.name === current));
                 });
-                if (current) {
-                    $select.val(current);
-                }
                 $select.selectpicker('refresh');
                 reloadEntries();
             });
