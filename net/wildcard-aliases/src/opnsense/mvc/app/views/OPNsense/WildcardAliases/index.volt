@@ -91,10 +91,7 @@
                 rows.forEach(function(row) {
                     const last = row.last_learned ? new Date(row.last_learned * 1000).toLocaleString() : '-';
                     $body.append($('<tr>').append(
-                        $('<td>').append($('<a href="#">').text(row.name).on('click', function (e) {
-                            e.preventDefault();
-                            showEntriesOf(row.name);
-                        })),
+                        $('<td>').text(row.name),
                         $('<td>').text(row.patterns),
                         $('<td>').text(row.entries + ' / ' + row.max_entries),
                         $('<td>').text(row.learned_total + (row.evicted_total ? ' (' + row.evicted_total + " {{ lang._('evicted') }})" : '')),
@@ -117,7 +114,6 @@
 
         // learned addresses of one alias, with the domains they came from
         let entriesGrid = null;
-        let entriesWanted = null;
 
         function formatDuration(seconds) {
             const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600);
@@ -160,8 +156,7 @@
         function loadEntries() {
             ajaxGet('/api/wildcardaliases/service/stats', {}, function (data, status) {
                 const $select = $('#entries_alias');
-                const current = entriesWanted || $select.val();
-                entriesWanted = null;
+                const current = $select.val();
                 $select.empty();
                 ((data && data.tables) || []).forEach(function (row) {
                     // mark it as the default selection: bootstrap-select replaces a first option that
@@ -171,11 +166,6 @@
                 $select.selectpicker('refresh');
                 reloadEntries();
             });
-        }
-
-        function showEntriesOf(name) {
-            entriesWanted = name;
-            $('a[data-toggle="tab"][href="#entries"]').tab('show');
         }
 
         $('a[data-toggle="tab"][href="#entries"]').on('shown.bs.tab', loadEntries);
@@ -214,7 +204,7 @@
                 <tbody></tbody>
             </table>
             <button class="btn btn-default" id="refreshStats" type="button">{{ lang._('Refresh') }}</button>
-            <p class="text-muted">{{ lang._('Click an alias to see its learned addresses.') }}</p>
+            <p class="text-muted">{{ lang._('The learned addresses of each alias are listed in the "Learned addresses" tab.') }}</p>
         </div>
     </div>
     <div id="entries" class="tab-pane fade in">
