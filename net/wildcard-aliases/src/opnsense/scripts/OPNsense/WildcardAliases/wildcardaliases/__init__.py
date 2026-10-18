@@ -28,4 +28,4 @@
     they can be used as regular firewall aliases.
 """
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'

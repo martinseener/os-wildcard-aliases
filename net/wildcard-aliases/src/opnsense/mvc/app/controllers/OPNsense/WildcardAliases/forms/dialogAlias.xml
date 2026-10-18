@@ -23,7 +23,7 @@
         <style>tokenize</style>
         <allownew>true</allownew>
         <hint>e.g. *.blob.core.windows.net</hint>
-        <help>Names to watch: "example.com" matches only that name, "*.example.com" matches every name below example.com (but not example.com itself). Add both if you need both.</help>
+        <help>Names to watch: "example.com" matches only that name, "*.example.com" matches every name below example.com (but not example.com itself). Add both if you need both. Exact names are resolved by the firewall itself and kept up to date, so they are in the alias right away. Names below a wildcard are learned when clients look them up; names your resolver (e.g. AdGuard Home) has cached are learned once that cache entry expires or the cache is cleared.</help>
     </field>
     <field>
         <id>alias.families</id>

@@ -436,7 +436,8 @@ async def test_tcp_queries_per_connection_limit(env, monkeypatch):
     reader, writer = await asyncio.open_connection('127.0.0.1', port)
     await _tcp_exchange(reader, writer, 'www.example.org')
     await _tcp_exchange(reader, writer, 'www.example.org')
-    with pytest.raises(asyncio.IncompleteReadError):
+    # closed by the server: a clean EOF or, depending on timing, a reset
+    with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
         await _tcp_exchange(reader, writer, 'www.example.org')
     writer.close()
 
@@ -445,3 +446,77 @@ async def test_learned_addresses_remember_the_queried_name(env):
     _, server, port = await env()
     await udp_query(port, 'ACCT.blob.core.windows.net')
     assert server.store.get('azure4').names == {'20.60.0.1': ['acct.blob.core.windows.net']}
+
+
+# -- exact names resolved by the daemon (1.2) -----------------------------------------------
+
+EXACT_RECORDS = dict(RECORDS, **{
+    'webmail.example.net.': ['webmail.example.net. 300 IN A 148.251.154.235'],
+    'nas.example.net.': ['nas.example.net. 300 IN A 192.168.1.10'],
+})
+
+
+def exact_aliases(*extra):
+    return [{'name': 'webmail', 'patterns': ['webmail.example.net'], 'inet': True, 'inet6': False},
+            {'name': 'wild', 'patterns': ['*.example.net'], 'inet': True, 'inet6': True}] + list(extra)
+
+
+async def test_exact_names_are_resolved_without_client_queries(env):
+    upstream, server, _ = await env(records=EXACT_RECORDS, aliases=exact_aliases())
+    await server._prefetch_task
+    assert server.backend.tables['webmail'] == {'148.251.154.235'}
+    # the wildcard alias matching the same name gets it too, but wildcards themselves are not resolved
+    assert server.backend.tables['wild'] == {'148.251.154.235'}
+    # A for the IPv4-only alias, AAAA because the wildcard alias that also matches wants IPv6
+    assert sorted(upstream.qtypes) == [('webmail.example.net.', 'A'), ('webmail.example.net.', 'AAAA')]
+    assert server.store.get('webmail').names == {'148.251.154.235': ['webmail.example.net']}
+    assert server.stats['queries'] == 0 and server.stats['prefetched'] == 2
+
+
+async def test_exact_names_follow_alias_families(env):
+    upstream, server, _ = await env(records=EXACT_RECORDS, aliases=[
+        {'name': 'webmail', 'patterns': ['webmail.example.net'], 'inet': True, 'inet6': False}])
+    await server._prefetch_task
+    assert upstream.qtypes == [('webmail.example.net.', 'A')]
+
+
+async def test_exact_names_are_refreshed_before_expiry(env):
+    clock = Clock()
+    upstream, server, _ = await env(records=EXACT_RECORDS, clock=clock, aliases=exact_aliases()[:1])
+    await server._prefetch_task
+    # TTL 300: refreshed after 300 - 30 = 270 seconds, not before
+    clock.now += 260
+    await server.run_prefetch()
+    assert len(upstream.qtypes) == 1
+    clock.now += 15
+    await server.run_prefetch()
+    assert len(upstream.qtypes) == 2
+    assert server.store.get('webmail').entries['148.251.154.235'] == clock.now + 300
+
+
+async def test_reload_resolves_new_exact_names_at_once(env, tmp_path):
+    upstream, server, _ = await env(records=EXACT_RECORDS, aliases=exact_aliases()[1:])
+    assert server._prefetch_task is None  # nothing exact to resolve
+    await server.reload(make_config(upstream.port, tmp_path, aliases=exact_aliases()))
+    await server._prefetch_task
+    assert server.backend.tables['webmail'] == {'148.251.154.235'}
+
+
+async def test_exact_names_respect_the_private_filter(env):
+    _, server, _ = await env(records=EXACT_RECORDS, aliases=[
+        {'name': 'nas', 'patterns': ['nas.example.net'], 'inet': True, 'inet6': False}])
+    await server._prefetch_task
+    assert server.backend.tables.get('nas', set()) == set()
+    assert server.stats['private_ignored'] == 1
+    assert server._prefetch['nas.example.net'] == server.clock() + server_module.PREFETCH_NEGATIVE
+
+
+async def test_exact_name_upstream_failure_is_retried(env):
+    upstream, server, _ = await env(records=EXACT_RECORDS, aliases=exact_aliases()[:1])
+    await server._prefetch_task
+    upstream.tamper = lambda query, reply: []  # upstream stops answering
+    server._prefetch['webmail.example.net'] = 0
+    await server.run_prefetch()
+    assert server._prefetch['webmail.example.net'] == server.clock() + server_module.PREFETCH_RETRY
+    # what was learned before stays until it expires
+    assert server.backend.tables['webmail'] == {'148.251.154.235'}

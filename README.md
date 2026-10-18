@@ -38,6 +38,11 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
   Learned addresses are saved about a second after they are learned, so a restart loses next to
   nothing. Replies from upstream are only accepted with the daemon's own random query ID and the
   same question, and no address stays longer than a week, whatever TTL is announced.
+* **Exact names** (patterns without `*`) are also resolved by the daemon itself, on start and on
+  every Apply, and refreshed shortly before they expire. Their aliases are filled right away and
+  don't depend on what clients or caches do. Wildcards can't be resolved in advance (DNS has no way
+  to list all names below a domain): they are learned from client queries, so a name your resolver
+  has cached is only learned once that cache entry expires or the cache is cleared.
 * **Learned addresses:** the "Learned addresses" tab lists each alias's addresses with the domains
   they were learned from (the 5 most recent per address) and when they expire. Only plain host
   names are recorded, and they are always displayed as text.

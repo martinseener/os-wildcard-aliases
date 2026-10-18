@@ -36,6 +36,7 @@ import time
 import dns.exception
 import dns.flags
 import dns.message
+import dns.name
 import dns.rcode
 
 from .backend import BackendError
@@ -53,6 +54,12 @@ MAX_TCP_CLIENTS = 256
 MAX_TCP_QUERIES = 100
 # write learned addresses to disk this many seconds after learning, so a restart loses little
 STATE_DELAY = 1.0
+# exact names (patterns without "*") are resolved by the daemon itself and refreshed before they
+# expire, so their aliases don't depend on what is still cached somewhere
+PREFETCH_MIN_INTERVAL = 10
+PREFETCH_RETRY = 60         # after an upstream or pf error
+PREFETCH_NEGATIVE = 300     # name without (usable) addresses
+PREFETCH_CONCURRENCY = 8
 
 
 class UpstreamError(Exception):
@@ -184,6 +191,7 @@ class WildcardAliasesServer:
         self.stats = {
             'queries': 0, 'matched': 0, 'learned': 0, 'upstream_errors': 0,
             'backend_errors': 0, 'servfail_sent': 0, 'private_ignored': 0, 'refused_overload': 0,
+            'prefetched': 0,
             'started': clock(),
         }
         self._servers = []
@@ -194,6 +202,8 @@ class WildcardAliasesServer:
         self._housekeeping = None
         self._state_pending = None
         self._listeners_ok = True
+        self._prefetch = {}
+        self._prefetch_task = None
         self.apply_config(config)
 
     # -- configuration -------------------------------------------------------------------
@@ -204,6 +214,12 @@ class WildcardAliasesServer:
         self.aliases = {alias.name: alias for alias in config.aliases}
         self.matcher = Matcher((alias.name, alias.patterns) for alias in config.aliases)
         self.private_matcher = Matcher([('private', config.private_domains)])
+        # (re)resolve every exact name now: a new or re-created alias must not wait for a refresh
+        now = self.clock()
+        self._prefetch = {
+            normalize(pattern): now
+            for alias in config.aliases for pattern in alias.patterns if not pattern.startswith('*')
+        }
         self.upstream = Upstream(config.upstreams, config.upstream_timeout)
         log.setLevel(logging.DEBUG if config.verbose else logging.INFO)
         return self.store.reconfigure({alias.name: alias.max_entries for alias in config.aliases})
@@ -220,6 +236,7 @@ class WildcardAliasesServer:
                 await self._safe(self.backend.replace(name, sorted(table.entries)))
         if listen_changed:
             await self.restart_listeners()
+        self.kick_prefetch()
         log.info('configuration reloaded (%d aliases)', len(self.aliases))
 
     # -- lifecycle -----------------------------------------------------------------------
@@ -239,6 +256,7 @@ class WildcardAliasesServer:
             await self._safe(self.backend.replace(name, sorted(table.entries)))
         await self.start_listeners()
         self._housekeeping = asyncio.ensure_future(self._housekeeping_loop())
+        self.kick_prefetch()
 
     async def start_listeners(self):
         loop = asyncio.get_running_loop()
@@ -485,6 +503,69 @@ class WildcardAliasesServer:
                 self.write_state()
             self._state_pending = asyncio.get_running_loop().call_later(STATE_DELAY, flush)
 
+    # -- resolving exact names ---------------------------------------------------------------
+
+    def kick_prefetch(self):
+        """ resolve the exact names that are due, in the background """
+        if self._prefetch and (self._prefetch_task is None or self._prefetch_task.done()):
+            self._prefetch_task = self.spawn(self.run_prefetch())
+
+    async def run_prefetch(self):
+        now = self.clock()
+        due = [name for name, when in self._prefetch.items() if when <= now]
+        limit = asyncio.Semaphore(PREFETCH_CONCURRENCY)
+
+        async def refresh(name):
+            async with limit:
+                try:
+                    next_in = await self._prefetch_name(name)
+                except Exception:
+                    log.exception('resolving %s failed', name)
+                    next_in = PREFETCH_RETRY
+            # a reload may have removed the name (or scheduled it anew) meanwhile
+            if self._prefetch.get(name, now + 1) <= now:
+                self._prefetch[name] = self.clock() + next_in
+
+        await asyncio.gather(*(refresh(name) for name in due))
+
+    async def _prefetch_name(self, name):
+        """ resolve one exact name and learn its addresses, returns the seconds until the next run """
+        qname = dns.name.from_text(name)
+        tables = [table for table in self.matcher.match(qname) if table in self.aliases]
+        families = [
+            (rdtype, wanted) for rdtype, wanted in (
+                ('A', any(self.aliases[table].inet for table in tables)),
+                ('AAAA', any(self.aliases[table].inet6 for table in tables)),
+            ) if wanted
+        ]
+        holds, failed = [], False
+        for rdtype, _ in families:
+            query = dns.message.make_query(qname, rdtype, use_edns=0, payload=1232)
+            try:
+                response = dns.message.from_wire(await self.upstream.query(query.to_wire(), query.question))
+                if response.flags & dns.flags.TC:
+                    response = dns.message.from_wire(
+                        await self.upstream.query(query.to_wire(), query.question, tcp=True)
+                    )
+            except (UpstreamError, dns.exception.DNSException) as exc:
+                log.warning('resolving %s %s failed: %s', name, rdtype, exc)
+                failed = True
+                continue
+            learned = self._filter_private(extract(response, qname), qname)
+            if learned:
+                if await self.learn(tables, learned, name):
+                    self.stats['prefetched'] += 1
+                    holds.append(self.config.hold_time(learned.ttl))
+                else:
+                    failed = True
+        if failed:
+            return PREFETCH_RETRY
+        if not holds:
+            return PREFETCH_NEGATIVE
+        # refresh a little before the shortest hold time runs out
+        hold = min(holds)
+        return max(PREFETCH_MIN_INTERVAL, hold - max(15, hold // 10))
+
     async def _housekeeping_loop(self):
         last_state = self.clock()
         while True:
@@ -494,6 +575,7 @@ class WildcardAliasesServer:
                     await self.restart_listeners()
                 async with self._lock:
                     await self.expire()
+                self.kick_prefetch()
                 self.write_status()
                 if self.clock() - last_state >= self.config.state_interval:
                     self.write_state()

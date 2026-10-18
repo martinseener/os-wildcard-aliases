@@ -105,6 +105,7 @@
                 $('#stats_summary').text(stats.queries !== undefined ?
                     "{{ lang._('Queries') }}: " + stats.queries + ', ' +
                     "{{ lang._('watched') }}: " + stats.matched + ', ' +
+                    "{{ lang._('exact names resolved') }}: " + (stats.prefetched || 0) + ', ' +
                     "{{ lang._('upstream errors') }}: " + stats.upstream_errors + ', ' +
                     "{{ lang._('table errors') }}: " + stats.backend_errors + ', ' +
                     "{{ lang._('private addresses ignored') }}: " + (stats.private_ignored || 0) + ', ' +

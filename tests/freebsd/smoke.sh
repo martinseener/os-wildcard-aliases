@@ -29,7 +29,8 @@ install -m 755 "${SRC}/etc/rc.d/wildcardaliases" /usr/local/etc/rc.d/wildcardali
 UPSTREAM="$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf)"
 cat > /usr/local/etc/wildcardaliases/wildcardaliases.json <<EOF
 {"listen": ["127.0.0.1:5354"], "upstreams": ["${UPSTREAM}"], "verbose": true,
- "aliases": [{"name": "smoke_test", "patterns": ["*.github.com"], "inet": true, "inet6": true}]}
+ "aliases": [{"name": "smoke_test", "patterns": ["*.github.com"], "inet": true, "inet6": true},
+             {"name": "smoke_exact", "patterns": ["www.freebsd.org"], "inet": true, "inet6": true}]}
 EOF
 
 sysrc -q wildcardaliases_enable=YES
@@ -37,6 +38,9 @@ service wildcardaliases configtest
 service wildcardaliases start
 sleep 2
 service wildcardaliases status || fail "not running after start"
+
+echo ">>> exact names are resolved by the daemon itself"
+pfctl -t smoke_exact -T show | grep -q . || fail "exact name www.freebsd.org was not resolved on start"
 
 echo ">>> query and pf table"
 [ -n "$(query api.github.com)" ] || fail "no answer for api.github.com"

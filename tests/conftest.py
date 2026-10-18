@@ -6,6 +6,7 @@ import sys
 import dns.flags
 import dns.message
 import dns.rcode
+import dns.rdatatype
 import dns.rrset
 import pytest
 
@@ -29,6 +30,7 @@ class FakeUpstream:
         self.truncate = truncate
         self.queries = []
         self.ids = []
+        self.qtypes = []
         # optional hook (query wire, reply wire) -> list of datagrams to send instead of the reply
         self.tamper = None
         self.udp = None
@@ -40,6 +42,7 @@ class FakeUpstream:
         qname = query.question[0].name.to_text().lower()
         self.queries.append((qname, 'tcp' if tcp else 'udp'))
         self.ids.append(query.id)
+        self.qtypes.append((qname, dns.rdatatype.to_text(query.question[0].rdtype)))
         response = dns.message.make_response(query)
         if qname in self.rcodes:
             response.set_rcode(self.rcodes[qname])
