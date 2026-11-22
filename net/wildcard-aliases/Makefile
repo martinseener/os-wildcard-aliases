@@ -3,7 +3,7 @@ PLUGIN_VERSION=		1.2
 PLUGIN_REVISION=	3
 PLUGIN_COMMENT=		DNS-learned wildcard FQDN aliases
 PLUGIN_MAINTAINER=	martin@sysorchestra.com
-PLUGIN_WWW=		https://github.com/martinseener/os-wildcard-aliases
+PLUGIN_WWW=		https://github.com/ElingSmith/os-wildcard-aliases
 # Python, PHP and shell only: one package for every FreeBSD version and architecture
 PLUGIN_NO_ABI=		yes
 

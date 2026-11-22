@@ -230,3 +230,10 @@ For a reconfigure error, first validate the generated configuration on OPNsense:
 
 The generated JSON path is `/usr/local/etc/wildcardaliases/wildcardaliases.json`.
 A DNS upstream timeout is a separate issue and should not be masked by this patch.
+
+
+## Fork fixes (ElingSmith)
+
+- Firewall alias descriptions are limited to 255 **bytes** and truncated on UTF-8 character boundaries. The actual domain patterns remain complete. This prevents the OPNsense validation error on large lists (e.g. ByBit/Ubuntu) when applying changes.
+- **Known limitation:** Renaming a Wildcard Alias does not rename the corresponding Firewall alias or update rules referencing its old name. To avoid duplicate aliases and broken rules, do not rename existing aliases in place. Create a new alias, update firewall rules to reference it, then remove the old one after verifying the new alias works.
+- Development installation replaces package-managed files without updating `pkg` metadata; a future package upgrade may overwrite the changes.

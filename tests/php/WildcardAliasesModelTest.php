@@ -263,6 +263,19 @@ class WildcardAliasesModelTest extends TestCase
         $this->assertStringContainsString('*.queue.core.windows.net', (string)$alias->description);
     }
 
+    public function testFirewallAliasDescriptionIsUtf8SafeAndBounded()
+    {
+        $patterns = array_fill(0, 40, '*.long-example-domain.test');
+        $description = WildcardAliases::firewallAliasDescription('поддомены ubuntu', $patterns);
+        $this->assertLessThanOrEqual(255, strlen($description));
+        $this->assertEquals(1, preg_match('//u', $description));
+        $this->assertStringEndsWith('...', $description);
+        $this->assertEquals(
+            'Wildcard Aliases: *.example.com',
+            WildcardAliases::firewallAliasDescription('', ['*.example.com'])
+        );
+    }
+
     public function testSyncAliasesNeverTakesOverForeignAliases()
     {
         $aliases = new Alias();
