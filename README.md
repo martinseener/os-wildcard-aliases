@@ -51,18 +51,12 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
 
 ## Installation
 
-The plugin is published in [martinseener/opnsense-repo](https://github.com/martinseener/opnsense-repo).
-On the firewall, as root:
+This fork is maintained at [ElingSmith/os-wildcard-aliases](https://github.com/ElingSmith/os-wildcard-aliases).
 
-```sh
-fetch -o /usr/local/etc/pkg/repos/martinseener.conf https://martinseener.github.io/opnsense-repo/martinseener.conf
-pkg update
-```
-
-Then install **os-wildcard-aliases** under System → Firmware → Plugins. Removing the package keeps
+**Important:** this GitHub source repository is not a FreeBSD pkg repository. Do not replace the existing `martinseener.conf` with a GitHub source URL. For testing, install the source files as described below. Once a signed or otherwise trusted pkg repository is published, package installation instructions can be added here. Removing the package keeps
 its settings and the aliases it created, like other OPNsense plugins.
 
-## Installation (development)
+## Installation from source (development / existing OPNsense installation)
 
 The plugin follows the layout of [opnsense/plugins](https://github.com/opnsense/plugins), so it
 can be built like any other plugin later. Until there is a package, copy it onto a **test** box:
@@ -219,3 +213,27 @@ brew install shivammathur/php/php@8.4 shivammathur/extensions/phalcon5@8.4 phpun
 ## License
 
 BSD 2-Clause, see [LICENSE](LICENSE). This is the license used by OPNsense itself.
+
+
+## Optional root-domain inclusion (local patch)
+
+An alias can enable **Include root domains automatically**. With this option,
+`*.github.com` also includes `github.com` in the generated daemon configuration.
+The original wildcard remains unchanged. The daemon's existing exact-name
+prefetch periodically resolves the root domain. Existing aliases default to off.
+
+For a reconfigure error, first validate the generated configuration on OPNsense:
+
+```sh
+/usr/local/etc/rc.d/wildcardaliases configtest
+```
+
+The generated JSON path is `/usr/local/etc/wildcardaliases/wildcardaliases.json`.
+A DNS upstream timeout is a separate issue and should not be masked by this patch.
+
+
+## Fork fixes (ElingSmith)
+
+- Firewall alias descriptions are limited to 255 **bytes** and truncated on UTF-8 character boundaries. The actual domain patterns remain complete. This prevents the OPNsense validation error on large lists (e.g. ByBit/Ubuntu) when applying changes.
+- **Known limitation:** Renaming a Wildcard Alias does not rename the corresponding Firewall alias or update rules referencing its old name. To avoid duplicate aliases and broken rules, do not rename existing aliases in place. Create a new alias, update firewall rules to reference it, then remove the old one after verifying the new alias works.
+- Development installation replaces package-managed files without updating `pkg` metadata; a future package upgrade may overwrite the changes.

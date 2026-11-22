@@ -152,6 +152,26 @@ class WildcardAliases extends BaseModel
     }
 
     /**
+     * Firewall alias descriptions are limited to 255 bytes by OPNsense.
+     * Keep the full domain list in Wildcard Aliases; only shorten the cosmetic
+     * description mirrored to Firewall -> Aliases. Never cut inside UTF-8.
+     */
+    public static function firewallAliasDescription($description, $patterns)
+    {
+        $label = sprintf('Wildcard Aliases: %s', implode(', ', $patterns));
+        if ($description !== '') {
+            $label = sprintf('%s (%s)', $description, $label);
+        }
+        if (strlen($label) <= 255) {
+            return $label;
+        }
+        $prefix = substr($label, 0, 252);
+        // Drop the last UTF-8 character if it may have been split.
+        $prefix = preg_replace('/[\xC0-\xFF][\x80-\xBF]*$/', '', $prefix);
+        return $prefix . '...';
+    }
+
+    /**
      * create or update the "external" aliases backing the enabled wildcard aliases
      * @return bool true when the alias configuration changed
      */
@@ -164,10 +184,15 @@ class WildcardAliases extends BaseModel
                 continue;
             }
             $name = (string)$wildcard->name;
-            $description = sprintf('Wildcard Aliases: %s', str_replace(',', ', ', (string)$wildcard->patterns));
-            if (!empty((string)$wildcard->description)) {
-                $description = sprintf('%s (%s)', (string)$wildcard->description, $description);
+            $patterns = array_map('trim', explode(',', (string)$wildcard->patterns));
+            if ((string)$wildcard->include_apex == '1') {
+                foreach ($patterns as $pattern) {
+                    if (strpos($pattern, '*.') === 0 && !in_array(substr($pattern, 2), $patterns, true)) {
+                        $patterns[] = substr($pattern, 2);
+                    }
+                }
             }
+            $description = self::firewallAliasDescription((string)$wildcard->description, $patterns);
             $fwAlias = $fwAliases->getByName($name);
             if ($fwAlias == null) {
                 $fwAlias = $fwAliases->aliases->alias->Add();

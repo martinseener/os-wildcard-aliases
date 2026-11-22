@@ -2,9 +2,17 @@
 {% for alias in helpers.toList('OPNsense.WildcardAliases.aliases.alias') %}
 {%   if alias.enabled|default('0') == '1' %}
 {%     set families = (alias.families|default('')).split(',') %}
+{%     set patterns = (alias.patterns|default('')).split(',') %}
+{%     if alias.include_apex|default('0') == '1' %}
+{%       for pattern in patterns|list %}
+{%         if pattern.startswith('*.') and pattern[2:] not in patterns %}
+{%           do patterns.append(pattern[2:]) %}
+{%         endif %}
+{%       endfor %}
+{%     endif %}
 {%     do aliases.append({
           'name': alias.name,
-          'patterns': (alias.patterns|default('')).split(','),
+          'patterns': patterns,
           'inet': 'IPv4' in families,
           'inet6': 'IPv6' in families,
           'max_entries': alias.max_entries|default('4096')|int
