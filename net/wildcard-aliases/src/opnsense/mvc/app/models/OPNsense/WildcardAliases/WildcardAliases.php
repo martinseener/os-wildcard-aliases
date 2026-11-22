@@ -164,7 +164,15 @@ class WildcardAliases extends BaseModel
                 continue;
             }
             $name = (string)$wildcard->name;
-            $description = sprintf('Wildcard Aliases: %s', str_replace(',', ', ', (string)$wildcard->patterns));
+            $patterns = array_map('trim', explode(',', (string)$wildcard->patterns));
+            if ((string)$wildcard->include_apex == '1') {
+                foreach ($patterns as $pattern) {
+                    if (strpos($pattern, '*.') === 0 && !in_array(substr($pattern, 2), $patterns, true)) {
+                        $patterns[] = substr($pattern, 2);
+                    }
+                }
+            }
+            $description = sprintf('Wildcard Aliases: %s', implode(', ', $patterns));
             if (!empty((string)$wildcard->description)) {
                 $description = sprintf('%s (%s)', (string)$wildcard->description, $description);
             }

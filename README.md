@@ -219,3 +219,20 @@ brew install shivammathur/php/php@8.4 shivammathur/extensions/phalcon5@8.4 phpun
 ## License
 
 BSD 2-Clause, see [LICENSE](LICENSE). This is the license used by OPNsense itself.
+
+
+## Optional root-domain inclusion (local patch)
+
+An alias can enable **Include root domains automatically**. With this option,
+`*.github.com` also includes `github.com` in the generated daemon configuration.
+The original wildcard remains unchanged. The daemon's existing exact-name
+prefetch periodically resolves the root domain. Existing aliases default to off.
+
+For a reconfigure error, first validate the generated configuration on OPNsense:
+
+```sh
+/usr/local/etc/rc.d/wildcardaliases configtest
+```
+
+The generated JSON path is `/usr/local/etc/wildcardaliases/wildcardaliases.json`.
+A DNS upstream timeout is a separate issue and should not be masked by this patch.
