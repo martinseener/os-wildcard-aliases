@@ -51,18 +51,12 @@ client ──DNS──▶ resolver (AdGuard Home / Unbound) ──[all or watche
 
 ## Installation
 
-The plugin is published in [martinseener/opnsense-repo](https://github.com/martinseener/opnsense-repo).
-On the firewall, as root:
+This fork is maintained at [ElingSmith/os-wildcard-aliases](https://github.com/ElingSmith/os-wildcard-aliases).
 
-```sh
-fetch -o /usr/local/etc/pkg/repos/martinseener.conf https://martinseener.github.io/opnsense-repo/martinseener.conf
-pkg update
-```
-
-Then install **os-wildcard-aliases** under System → Firmware → Plugins. Removing the package keeps
+**Important:** this GitHub source repository is not a FreeBSD pkg repository. Do not replace the existing `martinseener.conf` with a GitHub source URL. For testing, install the source files as described below. Once a signed or otherwise trusted pkg repository is published, package installation instructions can be added here. Removing the package keeps
 its settings and the aliases it created, like other OPNsense plugins.
 
-## Installation (development)
+## Installation from source (development / existing OPNsense installation)
 
 The plugin follows the layout of [opnsense/plugins](https://github.com/opnsense/plugins), so it
 can be built like any other plugin later. Until there is a package, copy it onto a **test** box:
